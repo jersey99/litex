@@ -1,4 +1,3 @@
-# litex/soc/cores/cpu/blackparrot/core.py
 # BlackParrot Chip core support for the LiteX SoC.
 #
 # Authors: Sadullah Canakci & Cansu Demirkiran  <{scanakci,cansu}@bu.edu>
@@ -33,38 +32,36 @@ import os
 
 from migen import *
 
+from litex import get_data_mod
 from litex.soc.interconnect import axi
 from litex.soc.interconnect import wishbone
-from litex.soc.cores.cpu import CPU
+from litex.soc.cores.cpu import CPU, CPU_GCC_TRIPLE_RISCV64
 
 CPU_VARIANTS = {
     "standard": "freechips.rocketchip.system.LitexConfig",
-#    "linux":    "freechips.rocketchip.system.LitexLinuxConfig",
-#    "full":     "freechips.rocketchip.system.LitexFullConfig",
 }
 
 GCC_FLAGS = {
-    "standard": "-march=rv64ia   -mabi=lp64 -O0 ",
-#    "linux":    "-march=rv64imac   -mabi=lp64 ",
-#    "full":     "-march=rv64imafdc -mabi=lp64 ",
+    "standard": "-march=rv64ia -mabi=lp64 -O0  ",
 }
 
-class BlackParrotRV64(Module):
+class BlackParrotRV64(CPU):
     name                 = "blackparrot"
+    human_name           = "BlackParrotRV64[ia]"
     data_width           = 64
     endianness           = "little"
-    gcc_triple           = ("riscv64-unknown-elf")
+    gcc_triple           = CPU_GCC_TRIPLE_RISCV64
     linker_output_format = "elf64-littleriscv"
- #   io_regions           = {0x10000000: 0x70000000} # origin, length
-    io_regions           = {0x30000000: 0x20000000} # origin, length
-   
+    nop                  = "nop"
+    io_regions           = {0x50000000: 0x10000000} # origin, length
+
     @property
     def mem_map(self):
         return {
-            "ethmac"   : 0x30000000,
-            "csr"      : 0x40000000,
-            "rom"      : 0x50000000,
-            "sram"     : 0x51000000,
+            "csr"      : 0x50000000,
+#            "ethmac"   : 0x55000000,
+            "rom"      : 0x70000000,
+            "sram"     : 0x71000000,
             "main_ram" : 0x80000000,
         }
 
@@ -77,71 +74,60 @@ class BlackParrotRV64(Module):
 
     def __init__(self, platform, variant="standard"):
         assert variant in CPU_VARIANTS, "Unsupported variant %s" % variant
-        print("SC: Check how to get cpu_reset_addr properly!!!!!!!!")
-        #assert cpu_reset_addr == 0x10000000, "cpu_reset_addr hardcoded in Chisel elaboration!"
 
-        self.platform = platform
-        self.variant = variant
-        self.reset = Signal()
-        self.interrupt = Signal(4)#TODO: how interrupts work?
-#        print(self.interrupt)
-# old       self.wbone = wbn = wishbone.Interface(data_width=64, adr_width=40)
-        self.wbone = wbn = wishbone.Interface(data_width=64, adr_width=37)
+        self.platform     = platform
+        self.variant      = variant
+        self.reset        = Signal()
+#        self.interrupt    = Signal(4)
+        self.idbus        = idbus = wishbone.Interface(data_width=64, adr_width=37)
+        self.periph_buses = [idbus]
+        self.memory_buses = []
+#        self.buses     = [wbn]
 
-        self.interrupts = {}#TODO: Idk why this is necessary. Without this, soc_core.py raises error with no object attirubute "interrupts" 
-
-        self.buses     = [wbn]
-        # # #
-        # connect BP adaptor to Wishbone
         self.cpu_params = dict(
             # clock, reset
             i_clk_i = ClockSignal(),
             i_reset_i = ResetSignal() | self.reset,
-            # irq
-            i_interrupts = self.interrupt,
-            i_wbm_dat_i = wbn.dat_r,
-            o_wbm_dat_o = wbn.dat_w,
-            i_wbm_ack_i = wbn.ack,
-           # i_wbm_err_i = wbn.err,
-           # i_wbm_rty_i = wbn.try,
-            o_wbm_adr_o = wbn.adr,
-            o_wbm_stb_o = wbn.stb,
-            o_wbm_cyc_o = wbn.cyc,
-            o_wbm_sel_o = wbn.sel,
-            o_wbm_we_o = wbn.we,
-            o_wbm_cti_o = wbn.cti,
-            o_wbm_bte_o = wbn.bte,
-        )
 
-#        self.submodules += mem_a2w,  mmio_a2w #need to change most probably!
+            # irq
+            #i_interrupts = self.interrupt,
+
+            #wishbone
+            i_wbm_dat_i = idbus.dat_r,
+            o_wbm_dat_o = idbus.dat_w,
+            i_wbm_ack_i = idbus.ack,
+            i_wbm_err_i = idbus.err,
+            #i_wbm_rty_i = 0,
+            o_wbm_adr_o = idbus.adr,
+            o_wbm_stb_o = idbus.stb,
+            o_wbm_cyc_o = idbus.cyc,
+            o_wbm_sel_o = idbus.sel,
+            o_wbm_we_o = idbus.we,
+            o_wbm_cti_o = idbus.cti,
+            o_wbm_bte_o = idbus.bte,
+            )
+
            # add verilog sources
         self.add_sources(platform, variant)
 
-    def set_reset_address(self, reset_address):#note sure if reset address needs to be changed for BB
+    def set_reset_address(self, reset_address):
         assert not hasattr(self, "reset_address")
         self.reset_address = reset_address
-        print(hex(reset_address))
-        #assert reset_address == 0x10000000, "cpu_reset_addr hardcoded in during elaboration!"
-
+        #FIXME: set reset addr to 0x70000000
+        #assert reset_address == 0x00000000, "cpu_reset_addr hardcoded to 0x00000000!"
 
     @staticmethod
     def add_sources(platform, variant="standard"):
-        #Read from a file and use add_source function
-      #  vdir = os.path.join(
-        #os.path.abspath(os.path.dirname(__file__)),"pre-alpha-release", "verilog",variant)
-      #  incdir = os.path.join(
-        #os.path.abspath(os.path.dirname(__file__)),"pre-alpha-release", "verilog",variant)
-        print("Adding the sources")
-        #vdir = os.path.join(
-        #os.path.abspath(os.path.dirname(__file__)),"verilog")
-        #platform.add_source_dir(vdir)
-        filename= os.path.join(os.path.abspath(os.path.dirname(__file__)),"flist_litex.verilator")
-        print(filename)
-#        platform.add_source('/home/scanakci/Research_sado/litex/litex/litex/soc/cores/cpu/blackparrot/pre-alpha-release/bp_fpga/ExampleBlackParrotSystem.v')
+        vdir = get_data_mod("cpu", "blackparrot").data_location
+        bp_litex_dir = os.path.join(vdir,"bp_litex")
+        simulation = 1
+        if (simulation == 1):
+            filename= os.path.join(bp_litex_dir,"flist.verilator")
+        else:
+            filename= os.path.join(bp_litex_dir,"flist.fpga")
         with open(filename) as openfileobject:
             for line in openfileobject:
                 temp = line
-        #        print(line)
                 if (temp[0] == '/' and temp[1] == '/'):
                     continue
                 elif ("+incdir+" in temp) :
@@ -151,7 +137,6 @@ class BlackParrotRV64(Module):
                     a = os.popen('echo '+ str(dir_))
                     dir_start = a.read()
                     vdir = dir_start[:-1] + line[s2:-1]
-                    print("INCDIR" + vdir)
                     platform.add_verilog_include_path(vdir)  #this line might be changed
                 elif (temp[0]=='$') :
                     s2 = line.find('/')
@@ -159,14 +144,10 @@ class BlackParrotRV64(Module):
                     a = os.popen('echo '+ str(dir_))
                     dir_start = a.read()
                     vdir = dir_start[:-1]+ line[s2:-1]
-                    print(vdir)
                     platform.add_source(vdir) #this line might be changed
                 elif (temp[0] == '/'):
                     assert("No support for absolute path for now")
 
-
-
-       
     def do_finalize(self):
         assert hasattr(self, "reset_address")
         self.specials += Instance("ExampleBlackParrotSystem", **self.cpu_params)

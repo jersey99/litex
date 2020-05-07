@@ -4,11 +4,9 @@
 # License: BSD
 
 import math
-from copy import copy
 
 from migen import *
 from migen.util.misc import xdir
-from migen.genlib.record import *
 from migen.genlib import fifo
 from migen.genlib.cdc import MultiReg, PulseSynchronizer
 
@@ -27,6 +25,12 @@ def _make_m2s(layout):
             r.append((f[0], _make_m2s(f[1])))
     return r
 
+def set_reset_less(field):
+    if isinstance(field, Signal):
+        field.reset_less = True
+    elif isinstance(field, Record):
+        for s, _ in field.iter_flat():
+            s.reset_less = True
 
 class EndpointDescription:
     def __init__(self, payload_layout, param_layout=[]):
@@ -61,6 +65,10 @@ class Endpoint(Record):
         else:
             self.description = EndpointDescription(description_or_layout)
         Record.__init__(self, self.description.get_full_layout(), name, **kwargs)
+        set_reset_less(self.first)
+        set_reset_less(self.last)
+        set_reset_less(self.payload)
+        set_reset_less(self.param)
 
     def __getattr__(self, name):
         try:
@@ -138,15 +146,15 @@ class PipelinedActor(BinaryActor):
         first = sink.valid & sink.first
         last  = sink.valid & sink.last
         for i in range(latency):
-            first_n = Signal()
-            last_n = Signal()
+            first_n = Signal(reset_less=True)
+            last_n  = Signal(reset_less=True)
             self.sync += \
                 If(self.pipe_ce,
                     first_n.eq(first),
                     last_n.eq(last)
                 )
             first = first_n
-            last = last_n
+            last  = last_n
         self.comb += [
             source.first.eq(first),
             source.last.eq(last)
@@ -156,12 +164,12 @@ class PipelinedActor(BinaryActor):
 
 class _FIFOWrapper(Module):
     def __init__(self, fifo_class, layout, depth):
-        self.sink   = Endpoint(layout)
-        self.source = Endpoint(layout)
+        self.sink   = sink   = Endpoint(layout)
+        self.source = source = Endpoint(layout)
 
         # # #
 
-        description = self.sink.description
+        description = sink.description
         fifo_layout = [
             ("payload", description.payload_layout),
             ("param",   description.param_layout),
@@ -169,43 +177,59 @@ class _FIFOWrapper(Module):
             ("last",    1)
         ]
 
-        self.submodules.fifo = fifo_class(layout_len(fifo_layout), depth)
+        self.submodules.fifo = fifo = fifo_class(layout_len(fifo_layout), depth)
         fifo_in  = Record(fifo_layout)
         fifo_out = Record(fifo_layout)
         self.comb += [
-            self.fifo.din.eq(fifo_in.raw_bits()),
-            fifo_out.raw_bits().eq(self.fifo.dout)
+            fifo.din.eq(fifo_in.raw_bits()),
+            fifo_out.raw_bits().eq(fifo.dout)
         ]
 
         self.comb += [
-            self.sink.ready.eq(self.fifo.writable),
-            self.fifo.we.eq(self.sink.valid),
-            fifo_in.first.eq(self.sink.first),
-            fifo_in.last.eq(self.sink.last),
-            fifo_in.payload.eq(self.sink.payload),
-            fifo_in.param.eq(self.sink.param),
+            sink.ready.eq(fifo.writable),
+            fifo.we.eq(sink.valid),
+            fifo_in.first.eq(sink.first),
+            fifo_in.last.eq(sink.last),
+            fifo_in.payload.eq(sink.payload),
+            fifo_in.param.eq(sink.param),
 
-            self.source.valid.eq(self.fifo.readable),
-            self.source.first.eq(fifo_out.first),
-            self.source.last.eq(fifo_out.last),
-            self.source.payload.eq(fifo_out.payload),
-            self.source.param.eq(fifo_out.param),
-            self.fifo.re.eq(self.source.ready)
+            source.valid.eq(fifo.readable),
+            source.first.eq(fifo_out.first),
+            source.last.eq(fifo_out.last),
+            source.payload.eq(fifo_out.payload),
+            source.param.eq(fifo_out.param),
+            fifo.re.eq(source.ready)
         ]
 
 
 class SyncFIFO(_FIFOWrapper):
     def __init__(self, layout, depth, buffered=False):
-        _FIFOWrapper.__init__(self,
-            fifo_class = fifo.SyncFIFOBuffered if buffered else fifo.SyncFIFO,
-            layout     = layout,
-            depth      = depth)
-        self.depth = self.fifo.depth
-        self.level = self.fifo.level
+        assert depth >= 0
+        if depth >= 2:
+            _FIFOWrapper.__init__(self,
+                fifo_class = fifo.SyncFIFOBuffered if buffered else fifo.SyncFIFO,
+                layout     = layout,
+                depth      = depth)
+            self.depth = self.fifo.depth
+            self.level = self.fifo.level
+        elif depth == 1:
+            buf = Buffer(layout)
+            self.submodules += buf
+            self.sink   = buf.sink
+            self.source = buf.source
+            self.depth  = 1
+            self.level  = Signal()
+        elif depth == 0:
+            self.sink   = Endpoint(layout)
+            self.source = Endpoint(layout)
+            self.comb += self.sink.connect(self.source)
+            self.depth = 0
+            self.level = Signal()
 
 
 class AsyncFIFO(_FIFOWrapper):
-    def __init__(self, layout, depth, buffered=False):
+    def __init__(self, layout, depth=4, buffered=False):
+        assert depth >= 4
         _FIFOWrapper.__init__(self,
             fifo_class = fifo.AsyncFIFOBuffered if buffered else fifo.AsyncFIFO,
             layout     = layout,
@@ -468,7 +492,7 @@ def inc_mod(s, m):
 
 class Gearbox(Module):
     def __init__(self, i_dw, o_dw, msb_first=True):
-        self.sink = sink = Endpoint([("data", i_dw)])
+        self.sink   = sink   = Endpoint([("data", i_dw)])
         self.source = source = Endpoint([("data", o_dw)])
 
         # # #
@@ -501,10 +525,10 @@ class Gearbox(Module):
 
         # Data path
 
-        shift_register = Signal(io_lcm)
+        shift_register = Signal(io_lcm, reset_less=True)
 
         i_cases = {}
-        i_data = Signal(i_dw)
+        i_data  = Signal(i_dw)
         if msb_first:
             self.comb += i_data.eq(sink.data)
         else:
@@ -514,7 +538,7 @@ class Gearbox(Module):
         self.sync += If(sink.valid & sink.ready, Case(i_count, i_cases))
 
         o_cases = {}
-        o_data = Signal(o_dw)
+        o_data  = Signal(o_dw)
         for i in range(io_lcm//o_dw):
             o_cases[i] = o_data.eq(shift_register[io_lcm - o_dw*(i+1):io_lcm - o_dw*i])
         self.comb += Case(o_count, o_cases)
@@ -674,7 +698,7 @@ class Cast(CombinatorialActor):
 class Unpack(Module):
     def __init__(self, n, layout_to, reverse=False):
         self.source = source = Endpoint(layout_to)
-        description_from = copy(source.description)
+        description_from = Endpoint(layout_to).description
         description_from.payload_layout = pack_layout(description_from.payload_layout, n)
         self.sink = sink = Endpoint(description_from)
 
@@ -718,7 +742,7 @@ class Unpack(Module):
 class Pack(Module):
     def __init__(self, layout_from, n, reverse=False):
         self.sink = sink = Endpoint(layout_from)
-        description_to = copy(sink.description)
+        description_to = Endpoint(layout_from).description
         description_to.payload_layout = pack_layout(description_to.payload_layout, n)
         self.source = source = Endpoint(description_to)
 
@@ -726,7 +750,7 @@ class Pack(Module):
 
         demux = Signal(max=n)
 
-        load_part = Signal()
+        load_part  = Signal()
         strobe_all = Signal()
         cases = {}
         for i in range(n):
