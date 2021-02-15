@@ -5,9 +5,7 @@ int serialboot(void);
 void netboot(void);
 void flashboot(void);
 void romboot(void);
-
-#ifdef CSR_SPISDCARD_BASE
-void spisdcardboot(void);
-#endif
+void sdcardboot(void);
+void sataboot(void);
 
 #endif /* __BOOT_H */

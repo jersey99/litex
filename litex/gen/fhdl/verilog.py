@@ -1,3 +1,6 @@
+#
+# This file is part of Migen and has been adapted/modified for LiteX.
+#
 # This file is Copyright (c) 2013-2014 Sebastien Bourdeauducq <sb@m-labs.hk>
 # This file is Copyright (c) 2013-2018 Florent Kermarrec <florent@enjoy-digital.fr>
 # This file is Copyright (c) 2013-2017 Robert Jordens <jordens@gmail.com>
@@ -8,8 +11,7 @@
 # This file is Copyright (c) 2015 Guy Hutchison <ghutchis@gmail.com>
 # This file is Copyright (c) 2013 Nina Engelhardt <nina.engelhardt@omnium-gatherum.de>
 # This file is Copyright (c) 2018 Robin Ole Heinemann <robin.ole.heinemann@t-online.de>
-
-# License: BSD
+# SPDX-License-Identifier: BSD-2-Clause
 
 from functools import partial
 from operator import itemgetter
@@ -143,7 +145,7 @@ def _printnode(ns, at, level, node, target_filter=None):
         else:
             assignment = " <= "
         return "\t"*level + _printexpr(ns, node.l)[0] + assignment + _printexpr(ns, node.r)[0] + ";\n"
-    elif isinstance(node, collections.Iterable):
+    elif isinstance(node, collections.abc.Iterable):
         return "".join(_printnode(ns, at, level, n, target_filter) for n in node)
     elif isinstance(node, If):
         r = "\t"*level + "if (" + _printexpr(ns, node.cond)[0] + ") begin\n"
@@ -396,10 +398,10 @@ def convert(f, ios=None, name="top",
                 f.clock_domains.append(cd)
                 ios |= {cd.clk, cd.rst}
             else:
-                print("available clock domains:")
+                msg = f"""Unresolved clock domain {cd_name}, availables:\n"""
                 for f in f.clock_domains:
-                    print(f.name)
-                raise KeyError("Unresolved clock domain: '"+cd_name+"'")
+                    msg += f"- {f.name}\n"
+                raise Exception(msg)
 
     f = lower_complex_slices(f)
     insert_resets(f)

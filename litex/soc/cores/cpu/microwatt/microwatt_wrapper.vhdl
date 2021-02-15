@@ -1,5 +1,9 @@
--- This file is Copyright (c) 2019 Florent Kermarrec <florent@enjoy-digital.fr>
--- License: BSD
+--
+-- This file is part of LiteX.
+--
+-- Copyright (c) 2019 Florent Kermarrec <florent@enjoy-digital.fr>
+-- Copyright (c) 2020 Raptor Engineering, LLC <sales@raptorengineering.com>
+-- SPDX-License-Identifier: BSD-2-Clause
 
 library ieee;
 use ieee.std_logic_1164.all;
@@ -46,6 +50,8 @@ entity microwatt_wrapper is
         dmi_req  : in  std_ulogic;
         dmi_wr   : in  std_ulogic;
         dmi_ack  : out std_ulogic;
+
+        core_ext_irq : in std_ulogic;
 
         terminated_out  : out std_logic
         );
@@ -94,6 +100,8 @@ begin
             clk               => clk,
             rst               => rst,
 
+            alt_reset         => '0',
+
             wishbone_insn_in  => wishbone_insn_in,
             wishbone_insn_out => wishbone_insn_out,
 
@@ -106,6 +114,8 @@ begin
             dmi_req           => dmi_req,
             dmi_wr            => dmi_wr,
             dmi_ack           => dmi_ack,
+
+            ext_irq           => core_ext_irq,
 
             terminated_out    => terminated_out
         );

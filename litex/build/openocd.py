@@ -1,9 +1,10 @@
-# This file is Copyright (c) 2015-2017 Robert Jordens <jordens@gmail.com>
-# This file is Copyright (c) 2015 Sebastien Bourdeauducq <sb@m-labs.hk>
-# This file is Copyright (c) 2019 Florent Kermarrec <florent@enjoy-digital.fr>
-# License: BSD
-
-import subprocess
+#
+# This file is part of LiteX.
+#
+# Copyright (c) 2015-2017 Robert Jordens <jordens@gmail.com>
+# Copyright (c) 2015 Sebastien Bourdeauducq <sb@m-labs.hk>
+# Copyright (c) 2019 Florent Kermarrec <florent@enjoy-digital.fr>
+# SPDX-License-Identifier: BSD-2-Clause
 
 from litex.build.tools import write_to_file
 from litex.build.generic_programmer import GenericProgrammer
@@ -23,7 +24,7 @@ class OpenOCD(GenericProgrammer):
             "pld load 0 {{{}}}".format(bitstream),
             "exit",
         ])
-        subprocess.call(["openocd", "-f", config, "-c", script])
+        self.call(["openocd", "-f", config, "-c", script])
 
     def flash(self, address, data, set_qe=False):
         config      = self.find_config()
@@ -36,12 +37,12 @@ class OpenOCD(GenericProgrammer):
             "fpga_program",
             "exit"
         ])
-        subprocess.call(["openocd", "-f", config, "-c", script])
+        self.call(["openocd", "-f", config, "-c", script])
 
 
     def stream(self, port=20000):
         """
-        Create a Telnet server to stream data to/from the internal JTAG TAP of the FPGA
+        Create a TCP server to stream data to/from the internal JTAG TAP of the FPGA
 
         Wire format: 10 bits LSB first
         Host to Target:
@@ -63,6 +64,7 @@ proc jtagstream_poll {tap tx n} {
     foreach txj [split $tx ""] {
         lset txi $i 1 [format 0x%4.4X [expr 0x201 | ([scan $txj %c] << 1)]]
         incr i
+        #echo tx[scan $txj %c]
     }
     set txi [concat {*}$txi]
     set rxi [split [drscan $tap {*}$txi -endstate DRPAUSE] " "]
@@ -85,21 +87,22 @@ proc jtagstream_drain {tap tx chunk_rx max_rx} {
         lassign [jtagstream_poll $tap "" $chunk_rx] rxi readable writable
         append rx $rxi
     }
-    if {!$writable} {
-        echo "write overflow"
-    }
+    #if {!$writable} {
+    #    echo "write overflow"
+    #}
     return $rx
 }
 
 proc jtagstream_rxtx {tap client is_poll} {
     if {![$client eof]} {
         if {!$is_poll} {
-            set tx [$client gets]
+            set tx [$client read 1]
         } else {
             set tx ""
         }
         set rx [jtagstream_drain $tap $tx 64 4096]
         if {[string length $rx]} {
+            #echo [string length $rx]
             $client puts -nonewline $rx
         }
         if {$is_poll} {
@@ -140,4 +143,5 @@ proc jtagstream_serve {tap port} {
             "jtagstream_serve $_CHIPNAME.tap {:d}".format(port),
             "exit",
         ])
-        subprocess.call(["openocd", "-f", self.config, "-f", "stream.cfg", "-c", script])
+        config = self.find_config()
+        self.call(["openocd", "-f", config, "-f", "stream.cfg", "-c", script])

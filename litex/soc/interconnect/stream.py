@@ -1,7 +1,10 @@
-# This file is Copyright (c) 2015 Sebastien Bourdeauducq <sb@m-labs.hk>
-# This file is Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
-# This file is Copyright (c) 2018 Tim 'mithro' Ansell <me@mith.ro>
-# License: BSD
+#
+# This file is part of LiteX.
+#
+# Copyright (c) 2015 Sebastien Bourdeauducq <sb@m-labs.hk>
+# Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2018 Tim 'mithro' Ansell <me@mith.ro>
+# SPDX-License-Identifier: BSD-2-Clause
 
 import math
 
@@ -33,7 +36,7 @@ def set_reset_less(field):
             s.reset_less = True
 
 class EndpointDescription:
-    def __init__(self, payload_layout, param_layout=[]):
+    def __init__(self, payload_layout=[], param_layout=[]):
         self.payload_layout = payload_layout
         self.param_layout   = param_layout
 
@@ -59,7 +62,7 @@ class EndpointDescription:
 
 
 class Endpoint(Record):
-    def __init__(self, description_or_layout, name=None, **kwargs):
+    def __init__(self, description_or_layout=[], name=None, **kwargs):
         if isinstance(description_or_layout, EndpointDescription):
             self.description = description_or_layout
         else:
@@ -67,7 +70,7 @@ class Endpoint(Record):
         Record.__init__(self, self.description.get_full_layout(), name, **kwargs)
         set_reset_less(self.first)
         set_reset_less(self.last)
-        set_reset_less(self.payload)
+        #set_reset_less(self.payload) # FIXME: cause issues with LiteSATA, understand why and uncomment.
         set_reset_less(self.param)
 
     def __getattr__(self, name):
@@ -228,12 +231,30 @@ class SyncFIFO(_FIFOWrapper):
 
 
 class AsyncFIFO(_FIFOWrapper):
-    def __init__(self, layout, depth=4, buffered=False):
+    def __init__(self, layout, depth=None, buffered=False):
+        depth = 4 if depth is None else depth
         assert depth >= 4
         _FIFOWrapper.__init__(self,
             fifo_class = fifo.AsyncFIFOBuffered if buffered else fifo.AsyncFIFO,
             layout     = layout,
             depth      = depth)
+
+# ClockDomainCrossing ------------------------------------------------------------------------------
+
+class ClockDomainCrossing(Module):
+    def __init__(self, layout, cd_from="sys", cd_to="sys", depth=None):
+        self.sink   = Endpoint(layout)
+        self.source = Endpoint(layout)
+        # # #
+
+        if cd_from == cd_to:
+            self.comb += self.sink.connect(self.source)
+        else:
+            cdc = AsyncFIFO(layout, depth)
+            cdc = ClockDomainsRenamer({"write": cd_from, "read": cd_to})(cdc)
+            self.submodules += cdc
+            self.comb += self.sink.connect(cdc.sink)
+            self.comb += cdc.source.connect(self.source)
 
 # Mux/Demux ----------------------------------------------------------------------------------------
 
@@ -546,6 +567,30 @@ class Gearbox(Module):
             self.comb += source.data.eq(o_data)
         else:
             self.comb += source.data.eq(o_data[::-1])
+
+# Shifter ------------------------------------------------------------------------------------------
+
+class Shifter(PipelinedActor):
+    def __init__(self, dw, shift=None):
+        self.shift  = Signal(max=dw) if shift is None else shift
+        self.sink   = sink   = Endpoint([("data", dw)])
+        self.source = source = Endpoint([("data", dw)])
+        PipelinedActor.__init__(self, latency=2)
+
+        # # #
+
+        # Accumulate current/last sink.data.
+        r = Signal(2*dw)
+        self.sync += If(self.pipe_ce,
+            r[:dw].eq(r[dw:]),
+            r[dw:].eq(sink.data)
+        )
+
+        # Select output data based on shift.
+        cases = {}
+        for i in range(dw):
+            cases[i] = self.source.data.eq(r[i:dw+i])
+        self.comb += Case(self.shift, cases)
 
 # Monitor ------------------------------------------------------------------------------------------
 

@@ -1,5 +1,6 @@
 // This file is Copyright (c) 2013-2014 Sebastien Bourdeauducq <sb@m-labs.hk>
 // This file is Copyright (c) 2019 Gabriel L. Somlo <gsomlo@gmail.com>
+// This file is Copyright (c) 2020 Raptor Engineering, LLC <sales@raptorengineering.com>
 // License: BSD
 
 
@@ -9,7 +10,12 @@
 #include <uart.h>
 #include <stdio.h>
 
+#if defined(__microwatt__)
+void isr(uint64_t vec);
+void isr_dec(void);
+#else
 void isr(void);
+#endif
 
 #ifdef CONFIG_CPU_HAS_INTERRUPT
 
@@ -62,6 +68,82 @@ void isr(void)
 		*((unsigned int *)PLIC_CLAIM) = claim;
 	}
 }
+#elif defined(__cv32e40p__)
+
+#define FIRQ_OFFSET 16
+#define IRQ_MASK 0x7FFFFFFF
+#define INVINST 2
+#define ECALL 11
+#define RISCV_TEST
+
+void isr(void)
+{
+    unsigned int cause = csrr(mcause) & IRQ_MASK;
+
+    if (csrr(mcause) & 0x80000000) {
+#ifndef UART_POLLING
+        if (cause == (UART_INTERRUPT+FIRQ_OFFSET)){
+            uart_isr();
+        }
+#endif
+    } else {
+#ifdef RISCV_TEST
+        int gp;
+        asm volatile ("mv %0, gp" : "=r"(gp));
+        printf("E %d\n", cause);
+        if (cause == INVINST) {
+            printf("Inv Instr\n");
+            for(;;);
+        }
+        if (cause == ECALL) {
+            printf("Ecall (gp: %d)\n", gp);
+            csrw(mepc, csrr(mepc)+4);
+        }
+#endif
+    }
+}
+#elif defined(__microwatt__)
+
+void isr(uint64_t vec)
+{
+	if (vec == 0x900)
+		return isr_dec();
+
+	if (vec == 0x500) {
+		// Read interrupt source
+		uint32_t xirr = xics_icp_readw(PPC_XICS_XIRR);
+		uint32_t irq_source = xirr & 0x00ffffff;
+
+		__attribute__((unused)) unsigned int irqs;
+
+		// Handle IPI interrupts separately
+		if (irq_source == 2) {
+			// IPI interrupt
+			xics_icp_writeb(PPC_XICS_MFRR, 0xff);
+		}
+		else {
+			// External interrupt
+			irqs = irq_pending() & irq_getmask();
+
+#ifndef UART_POLLING
+			if(irqs & (1 << UART_INTERRUPT))
+				uart_isr();
+#endif
+		}
+
+		// Clear interrupt
+		xics_icp_writew(PPC_XICS_XIRR, xirr);
+
+		return;
+	}
+}
+
+void isr_dec(void)
+{
+	//  For now, just set DEC back to a large enough value to slow the flood of DEC-initiated timer interrupts
+	mtdec(0x000000000ffffff);
+}
+
 #else
 void isr(void)
 {
@@ -69,15 +151,21 @@ void isr(void)
 
 	irqs = irq_pending() & irq_getmask();
 
+#ifdef CSR_UART_BASE
 #ifndef UART_POLLING
 	if(irqs & (1 << UART_INTERRUPT))
 		uart_isr();
+#endif
 #endif
 }
 #endif
 
 #else
 
+#if defined(__microwatt__)
+void isr(uint64_t vec){};
+#else
 void isr(void){};
+#endif
 
 #endif

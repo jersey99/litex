@@ -1,7 +1,8 @@
 #include <uart.h>
 #include <irq.h>
 #include <generated/csr.h>
-#include <hw/flags.h>
+
+#ifdef CSR_UART_BASE
 
 /*
  * Buffer sizes must be a power of 2 so that modulos can be computed
@@ -150,5 +151,7 @@ void uart_sync(void)
 {
 	while (uart_txfull_read());
 }
+
+#endif
 
 #endif
