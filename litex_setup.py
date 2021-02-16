@@ -41,7 +41,6 @@ repos = [
 
     # LiteX boards support
     ("litex-boards", ("https://github.com/litex-hub/",     False, True, None)),
->>>>>>> master
 
     # Optional LiteX data
     ("pythondata-misc-tapcfg",     ("https://github.com/litex-hub/", False, True, None)),
