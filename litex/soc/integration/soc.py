@@ -1346,7 +1346,7 @@ class LiteXSoC(SoC):
                 base_address = self.bus.regions["main_ram"].origin)
 
     # Add Ethernet ---------------------------------------------------------------------------------
-    def add_ethernet(self, name="ethmac", phy=None, phy_cd="eth", software_debug=False):
+    def add_ethernet(self, name="ethmac", phy=None, phy_cd="eth", dynamic_ip=False, software_debug=False):
         # Imports
         from liteeth.mac import LiteEthMAC
 
@@ -1380,6 +1380,9 @@ class LiteXSoC(SoC):
             self.crg.cd_sys.clk,
             eth_rx_clk,
             eth_tx_clk)
+
+        if dynamic_ip:
+            self.add_constant("ETH_DYNAMIC_IP")
 
         # Software Debug
         if software_debug:
@@ -1574,7 +1577,7 @@ class LiteXSoC(SoC):
             self.sata_phy.crg.cd_sata_rx.clk)
 
     # Add PCIe -------------------------------------------------------------------------------------
-    def add_pcie(self, name="pcie", phy=None, ndmas=0, max_pending_requests=8):
+    def add_pcie(self, name="pcie", phy=None, ndmas=0, max_pending_requests=8, with_msi=True):
         assert self.csr.data_width == 32
         assert not hasattr(self, f"{name}_endpoint")
 
@@ -1593,14 +1596,16 @@ class LiteXSoC(SoC):
         setattr(self.submodules, f"{name}_mmap", mmap)
 
         # MSI
-        msi = LitePCIeMSI()
-        setattr(self.submodules, f"{name}_msi", msi)
-        self.add_csr(f"{name}_msi")
-        self.comb += msi.source.connect(phy.msi)
-        self.msis = {}
+        if with_msi:
+            msi = LitePCIeMSI()
+            setattr(self.submodules, f"{name}_msi", msi)
+            self.add_csr(f"{name}_msi")
+            self.comb += msi.source.connect(phy.msi)
+            self.msis = {}
 
         # DMAs
         for i in range(ndmas):
+            assert with_msi
             dma = LitePCIeDMA(phy, endpoint,
                 with_buffering = True, buffering_depth=1024,
                 with_loopback  = True)
@@ -1611,9 +1616,10 @@ class LiteXSoC(SoC):
         self.add_constant("DMA_CHANNELS", ndmas)
 
         # Map/Connect IRQs
-        for i, (k, v) in enumerate(sorted(self.msis.items())):
-            self.comb += msi.irqs[i].eq(v)
-            self.add_constant(k + "_INTERRUPT", i)
+        if with_msi:
+            for i, (k, v) in enumerate(sorted(self.msis.items())):
+                self.comb += msi.irqs[i].eq(v)
+                self.add_constant(k + "_INTERRUPT", i)
 
         # Timing constraints
         self.platform.add_false_path_constraints(self.crg.cd_sys.clk, phy.cd_pcie.clk)
