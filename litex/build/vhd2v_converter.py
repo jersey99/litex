@@ -27,7 +27,7 @@ class VHD2VConverter(Module):
     _top_entity: str
         name of the core highest level entity
     _build_dir: str
-        directory where .ys and .v must be written and where to build 
+        directory where .ys and .v must be written and where to build
     _work_package: str
         when package is not default one, used to provides its name
     _platform: subclass of GenericPlatform
@@ -55,14 +55,14 @@ class VHD2VConverter(Module):
         """
         self._top_entity    = top_entity
         self._build_dir     = build_dir
-        self._work_package  = work_package 
+        self._work_package  = work_package
         self._platform      = platform
         self._sources       = files
         self._params        = params
         self._force_convert = force_convert
         self._add_instance  = add_instance
 
-        self._ghdl_opts     = ["--std=08", "--no-formal"]
+        self._ghdl_opts     = ["--std=08", "--no-formal", "-frelaxed"]
 
         if work_package is not None:
             self._ghdl_opts.append(f"--work={self._work_package}")
