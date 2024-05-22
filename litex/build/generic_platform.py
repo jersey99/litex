@@ -205,8 +205,11 @@ class ConstraintManager:
         self.platform_commands = []
         self.connector_manager = ConnectorManager(connectors)
 
-    def add_extension(self, io):
-        self.available.extend(io)
+    def add_extension(self, io, prepend=False):
+        if prepend:
+            self.available = list(io) + self.available
+        else:
+            self.available.extend(io)
 
     def add_connector(self, connectors):
         self.connector_manager.add_connector(connectors)
@@ -329,6 +332,7 @@ class ConstraintManager:
 
 class GenericPlatform:
     device_family  = None
+    _jtag_support  = True # JTAGBone can't be used with all FPGAs.
     _bitstream_ext = None # None by default, overridden by vendor platform, may
                           # be a string when same extension is used for sram and
                           # flash. A dict must be provided otherwise
@@ -503,6 +507,16 @@ class GenericPlatform:
 
     def create_programmer(self):
         raise NotImplementedError
+
+    @property
+    def jtag_support(self):
+        if isinstance(self._jtag_support, bool):
+            return self._jtag_support
+        else:
+            for dev in self._jtag_support:
+                if self.device.startswith(dev):
+                    return True
+            return False
 
     @property
     def support_mixed_language(self):

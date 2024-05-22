@@ -11,6 +11,7 @@ from litex.build.microsemi import common, libero_soc
 
 class MicrosemiPlatform(GenericPlatform):
     _bitstream_ext = ".bit"
+    _jtag_support  = False
 
     _supported_toolchains = ["libero_soc_polarfire"]
 
@@ -28,7 +29,8 @@ class MicrosemiPlatform(GenericPlatform):
         return GenericPlatform.get_verilog(self, *args,
             special_overrides = so,
             attr_translate    = self.toolchain.attr_translate,
-            **kwargs)
+            **kwargs
+        )
 
     def build(self, *args, **kwargs):
         return self.toolchain.build(self, *args, **kwargs)

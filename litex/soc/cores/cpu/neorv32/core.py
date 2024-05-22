@@ -75,7 +75,7 @@ class NEORV32(CPU):
         self.variant      = variant
         self.human_name   = f"NEORV32-{variant}"
         self.reset        = Signal()
-        self.ibus         = idbus = wishbone.Interface()
+        self.ibus         = idbus = wishbone.Interface(data_width=32, address_width=32, addressing="byte")
         self.periph_buses = [idbus] # Peripheral buses (Connected to main SoC's bus).
         self.memory_buses = []      # Memory buses (Connected directly to LiteDRAM).
 
@@ -98,7 +98,7 @@ class NEORV32(CPU):
             i_mext_irq_i  = 0,
 
             # I/D Wishbone Bus.
-            o_wb_adr_o = Cat(Signal(2), idbus.adr),
+            o_wb_adr_o = idbus.adr,
             i_wb_dat_i = idbus.dat_r,
             o_wb_dat_o = idbus.dat_w,
             o_wb_we_o  = idbus.we,
@@ -171,11 +171,14 @@ class NEORV32(CPU):
                 "neorv32_application_image.vhd",
                 "neorv32_bootloader_image.vhd",
                 "neorv32_boot_rom.vhd",
+                "neorv32_cache.vhd",
                 "neorv32_cfs.vhd",
+                "neorv32_clockgate.vhd",
                 "neorv32_cpu_alu.vhd",
                 "neorv32_cpu_control.vhd",
                 "neorv32_cpu_cp_bitmanip.vhd",
                 "neorv32_cpu_cp_cfu.vhd",
+                "neorv32_cpu_cp_cond.vhd",
                 "neorv32_cpu_cp_fpu.vhd",
                 "neorv32_cpu_cp_muldiv.vhd",
                 "neorv32_cpu_cp_shifter.vhd",
@@ -185,7 +188,6 @@ class NEORV32(CPU):
                 "neorv32_cpu_regfile.vhd",
                 "neorv32_cpu.vhd",
                 "neorv32_crc.vhd",
-                "neorv32_dcache.vhd",
                 "neorv32_debug_dm.vhd",
                 "neorv32_debug_dtm.vhd",
                 "neorv32_dma.vhd",
@@ -193,7 +195,6 @@ class NEORV32(CPU):
                 "neorv32_fifo.vhd",
                 "neorv32_gpio.vhd",
                 "neorv32_gptmr.vhd",
-                "neorv32_icache.vhd",
                 "neorv32_imem.entity.vhd",
                 "neorv32_intercon.vhd",
                 "neorv32_mtime.vhd",
@@ -210,7 +211,7 @@ class NEORV32(CPU):
                 "neorv32_twi.vhd",
                 "neorv32_uart.vhd",
                 "neorv32_wdt.vhd",
-                "neorv32_wishbone.vhd",
+                "neorv32_xbus.vhd",
                 "neorv32_xip.vhd",
                 "neorv32_xirq.vhd",
             ],
@@ -226,8 +227,8 @@ class NEORV32(CPU):
         }
 
         # Download VHDL sources (if not already present).
-        # Version 1.8.9
-        sha1 = "fdb00a5d24e256ac9a9cb29410f2653c95068c91"
+        # Version 1.9.7
+        sha1 = "ed17ae4df64e6a5221562e4adf4de378eaf0c2e8"
         for directory, vhds in sources.items():
             for vhd in vhds:
                 self.vhd2v_converter.add_source(os.path.join(cdir, vhd))

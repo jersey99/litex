@@ -7,6 +7,8 @@
 
 """AXI4-Full/Lite support for LiteX"""
 
+from math import log2
+
 from migen import *
 from migen.genlib import roundrobin
 
@@ -44,13 +46,22 @@ def r_lite_description(data_width):
     ]
 
 class AXILiteInterface:
-    def __init__(self, data_width=32, address_width=32, clock_domain="sys", name=None, bursting=False):
-        self.data_width    = data_width
-        self.address_width = address_width
-        self.clock_domain  = clock_domain
+    def __init__(self, data_width=32, address_width=32, addressing="byte", clock_domain="sys", name=None, bursting=False):
+        # Parameters checks.
+        # ------------------
+        assert addressing == "byte"
         if bursting is not False:
             raise NotImplementedError("AXI-Lite does not support bursting")
 
+        # Parameters.
+        # -----------
+        self.data_width    = data_width
+        self.address_width = address_width
+        self.addressing    = addressing
+        self.clock_domain  = clock_domain
+
+        # Channels.
+        # ---------
         self.aw = stream.Endpoint(ax_lite_description(address_width), name=name)
         self.w  = stream.Endpoint(w_lite_description(data_width),     name=name)
         self.b  = stream.Endpoint(b_lite_description(),               name=name)
@@ -119,6 +130,22 @@ class AXILiteInterface:
         yield self.r.ready.eq(0)
         return (data, resp)
 
+
+# AXI-Lite Remapper --------------------------------------------------------------------------------
+
+class AXILiteRemapper(LiteXModule):
+    """Remaps AXI Lite addresses by applying an origin offset and address mask."""
+    def __init__(self, master, slave, origin=0, size=None):
+        # Mask.
+        if size is None:
+            size = 2**master.address_width
+        mask = 2**int(log2(size)) - 1
+
+        # Address Mask and Shift.
+        self.comb += master.connect(slave)
+        self.comb += slave.aw.addr.eq(origin | master.aw.addr & mask)
+        self.comb += slave.ar.addr.eq(origin | master.ar.addr & mask)
+
 # AXI-Lite to Simple Bus ---------------------------------------------------------------------------
 
 def axi_lite_to_simple(axi_lite, port_adr, port_dat_r, port_dat_w=None, port_we=None):
@@ -128,6 +155,8 @@ def axi_lite_to_simple(axi_lite, port_adr, port_dat_r, port_dat_w=None, port_we=
     do_read        = Signal()
     do_write       = Signal()
     last_was_read  = Signal()
+
+    port_dat_r_latched = Signal(axi_lite.data_width)
 
     comb = []
     if port_dat_w is not None:
@@ -160,14 +189,17 @@ def axi_lite_to_simple(axi_lite, port_adr, port_dat_r, port_dat_w=None, port_we=
             )
         ).Elif(do_read,
             port_adr.eq(axi_lite.ar.addr[adr_shift:]),
-            NextState("SEND-READ-RESPONSE"),
+            NextState("LATCH-READ-RESPONSE"),
         )
     )
+    fsm.act("LATCH-READ-RESPONSE",
+        NextValue(port_dat_r_latched, port_dat_r),
+        NextState("SEND-READ-RESPONSE")
+    ),
     fsm.act("SEND-READ-RESPONSE",
         NextValue(last_was_read, 1),
         # As long as we have correct address port.dat_r will be valid.
-        port_adr.eq(axi_lite.ar.addr[adr_shift:]),
-        axi_lite.r.data.eq(port_dat_r),
+        axi_lite.r.data.eq(port_dat_r_latched),
         axi_lite.r.resp.eq(RESP_OKAY),
         axi_lite.r.valid.eq(1),
         If(axi_lite.r.ready,
@@ -187,6 +219,7 @@ def axi_lite_to_simple(axi_lite, port_adr, port_dat_r, port_dat_w=None, port_we=
 # AXI-Lite SRAM ------------------------------------------------------------------------------------
 
 class AXILiteSRAM(LiteXModule):
+    autocsr_exclude = {"mem"}
     def __init__(self, mem_or_size, read_only=None, init=None, bus=None, name=None):
         if bus is None:
             bus = AXILiteInterface()
@@ -208,8 +241,11 @@ class AXILiteSRAM(LiteXModule):
         # # #
 
         # Create memory port
-        port = self.mem.get_port(write_capable=not read_only, we_granularity=8,
-            mode=READ_FIRST if read_only else WRITE_FIRST)
+        port = self.mem.get_port(
+            write_capable  = not read_only,
+            we_granularity = 8,
+            mode           = READ_FIRST if read_only else WRITE_FIRST,
+        )
         self.specials += self.mem, port
 
         # Generate write enable signal
@@ -225,7 +261,7 @@ class AXILiteSRAM(LiteXModule):
             port_dat_r = port.dat_r,
             port_dat_w = port.dat_w if not read_only else None,
             port_we    = port.we if not read_only else None)
-        self.fsm = fsm
+        self.submodules.fsm = fsm
         self.comb += comb
 
 # AXI-Lite Data-Width Converter --------------------------------------------------------------------
@@ -764,7 +800,8 @@ class AXILiteInterconnectShared(LiteXModule):
     """AXI Lite shared interconnect"""
     def __init__(self, masters, slaves, register=False, timeout_cycles=1e6):
         data_width = get_check_parameters(ports=masters + [s for _, s in slaves])
-        shared = AXILiteInterface(data_width=data_width)
+        adr_width = max([m.address_width for m in masters])
+        shared = AXILiteInterface(data_width=data_width, address_width=adr_width)
         self.arbiter = AXILiteArbiter(masters, shared)
         self.decoder = AXILiteDecoder(shared, slaves)
         if timeout_cycles is not None:
@@ -777,8 +814,9 @@ class AXILiteCrossbar(LiteXModule):
     """
     def __init__(self, masters, slaves, register=False, timeout_cycles=1e6):
         data_width = get_check_parameters(ports=masters + [s for _, s in slaves])
+        adr_width = max([m.address_width for m in masters])
         matches, busses = zip(*slaves)
-        access_m_s = [[AXILiteInterface(data_width=data_width) for j in slaves] for i in masters]  # a[master][slave]
+        access_m_s = [[AXILiteInterface(data_width=data_width, address_width=adr_width) for j in slaves] for i in masters]  # a[master][slave]
         access_s_m = list(zip(*access_m_s))  # a[slave][master]
         # Decode each master into its access row.
         for slaves, master in zip(access_m_s, masters):

@@ -7,6 +7,8 @@
 
 """AXI4-Full/Lite support for LiteX"""
 
+from math import log2
+
 from migen import *
 from migen.genlib import roundrobin
 
@@ -54,7 +56,7 @@ def r_description(data_width):
     ]
 
 class AXIInterface:
-    def __init__(self, data_width=32, address_width=32, id_width=1, version="axi4", clock_domain="sys",
+    def __init__(self, data_width=32, address_width=32, addressing="byte", id_width=1, version="axi4", clock_domain="sys",
         name          = None,
         bursting      = False,
         aw_user_width = 0,
@@ -66,12 +68,14 @@ class AXIInterface:
         # Parameters checks.
         # ------------------
         assert data_width in [8, 16, 32, 64, 128, 256, 512, 1024]
+        assert addressing in ["byte"]
         assert version    in ["axi3", "axi4"]
 
         # Parameters.
         # -----------
         self.data_width    = data_width
         self.address_width = address_width
+        self.addressing    = addressing
         self.id_width      = id_width
         self.version       = version
         self.clock_domain  = clock_domain
@@ -135,6 +139,21 @@ class AXIInterface:
 
     def layout_flat(self):
         return list(axi_layout_flat(self))
+
+# AXI Remapper -------------------------------------------------------------------------------------
+
+class AXIRemapper(LiteXModule):
+    """Remaps AXI addresses by applying an origin offset and address mask."""
+    def __init__(self, master, slave, origin=0, size=None):
+        # Mask.
+        if size is None:
+            size = 2**master.address_width
+        mask = 2**int(log2(size)) - 1
+
+        # Address Mask and Shift.
+        self.comb += master.connect(slave)
+        self.comb += slave.aw.addr.eq(origin | master.aw.addr & mask)
+        self.comb += slave.ar.addr.eq(origin | master.ar.addr & mask)
 
 # AXI Bursts to Beats ------------------------------------------------------------------------------
 
@@ -611,7 +630,8 @@ class AXIInterconnectShared(LiteXModule):
     """AXI shared interconnect"""
     def __init__(self, masters, slaves, register=False, timeout_cycles=1e6):
         data_width = get_check_parameters(ports=masters + [s for _, s in slaves])
-        shared = AXIInterface(data_width=data_width)
+        adr_width = max([m.address_width for m in masters])
+        shared = AXIInterface(data_width=data_width, address_width=adr_width)
         self.arbiter = AXIArbiter(masters, shared)
         self.decoder = AXIDecoder(shared, slaves)
         if timeout_cycles is not None:
@@ -624,8 +644,9 @@ class AXICrossbar(LiteXModule):
     """
     def __init__(self, masters, slaves, register=False, timeout_cycles=1e6):
         data_width = get_check_parameters(ports=masters + [s for _, s in slaves])
+        adr_width = max([m.address_width for m in masters])
         matches, busses = zip(*slaves)
-        access_m_s = [[AXIInterface(data_width=data_width) for j in slaves] for i in masters]  # a[master][slave]
+        access_m_s = [[AXIInterface(data_width=data_width, address_width=adr_width) for j in slaves] for i in masters]  # a[master][slave]
         access_s_m = list(zip(*access_m_s))  # a[slave][master]
         # Decode each master into its access row.
         for slaves, master in zip(access_m_s, masters):

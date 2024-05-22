@@ -99,7 +99,7 @@ void romboot(void)
 #ifdef CSR_UART_BASE
 
 #define ACK_TIMEOUT_DELAY CONFIG_CLOCK_FREQUENCY/4
-#define CMD_TIMEOUT_DELAY CONFIG_CLOCK_FREQUENCY/16
+#define CMD_TIMEOUT_DELAY CONFIG_CLOCK_FREQUENCY/4
 
 static void timer0_load(unsigned int value) {
 	timer0_en_write(0);
@@ -304,7 +304,11 @@ int serialboot(void)
 #define TFTP_SERVER_PORT 69
 #endif
 
+#ifdef MACADDR1
+static unsigned char macadr[6] = {MACADDR1, MACADDR2, MACADDR3, MACADDR4, MACADDR5, MACADDR6};
+#else
 static unsigned char macadr[6] = {0x10, 0xe2, 0xd5, 0x00, 0x00, 0x00};
+#endif
 
 #ifdef LOCALIP1
 static unsigned int local_ip[4] = {LOCALIP1, LOCALIP2, LOCALIP3, LOCALIP4};

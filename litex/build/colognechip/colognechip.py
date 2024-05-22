@@ -91,6 +91,12 @@ class CologneChipToolchain(GenericToolchain):
         """ create project files (mainly Yosys ys file)
         """
         self._yosys.build_script()
+
+        # p_r complains about missing cc_worst_spd_dly.dly -> copy it in gateware directory
+        if which("p_r"):
+            p_r_path              = which("p_r")
+            cc_worst_spd_dly_path = os.path.join(os.path.dirname(p_r_path), "cc_worst_spd_dly.dly")
+            copyfile(cc_worst_spd_dly_path, os.path.join(self._build_dir, "cc_worst_spd_dly.dly"))
  
     # Script ---------------------------------------------------------------------------------------
 
@@ -114,7 +120,7 @@ class CologneChipToolchain(GenericToolchain):
         # yosys call
         script_contents += self._yosys.get_yosys_call("script") + fail_stmt
         # p_r call
-        script_contents += "p_r -ccf {build_name}.ccf -A 1 -i {build_name}_synth.v -o {build_name} -lib ccag\n".format(
+        script_contents += "p_r -ccf {build_name}.ccf -cCP -A 1 -i {build_name}_synth.v -o {build_name} -lib ccag\n".format(
             build_name = self._build_name)
 
         script_file = "build_" + self._build_name + script_ext

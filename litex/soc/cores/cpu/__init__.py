@@ -50,11 +50,9 @@ class CPU(LiteXModule):
 
 class CPUNone(CPU):
     variants            = ["standard"]
-    data_width          = 32
     endianness          = "little"
     reset_address       = 0x00000000
     reset_address_check = False
-    io_regions          = {0x0000_0000: 0x1_0000_0000} # origin, length
     periph_buses        = []
     memory_buses        = []
     mem_map             = {
@@ -62,6 +60,10 @@ class CPUNone(CPU):
         "ethmac"   : 0x0002_0000, # FIXME: Remove.
         "spiflash" : 0x1000_0000, # FIXME: Remove.
     }
+
+    def __init__(self, data_width=32, addr_width=32):
+        self.io_regions = {0: int(2**float(addr_width))} # origin, length
+        self.data_width = data_width
 
 # CPUs GCC Triples ---------------------------------------------------------------------------------
 
@@ -77,9 +79,13 @@ CPU_GCC_TRIPLE_RISCV64 = (
 )
 
 CPU_GCC_TRIPLE_RISCV32 = CPU_GCC_TRIPLE_RISCV64 + (
+    "riscv32-pc-linux-musl",
     "riscv32-unknown-elf",
     "riscv32-unknown-linux-gnu",
     "riscv32-elf",
+    "riscv32-linux",
+    "riscv32-linux-gnu",
+    "riscv32-none-elf",
     "riscv-none-embed",
     "riscv-none-elf",
 )

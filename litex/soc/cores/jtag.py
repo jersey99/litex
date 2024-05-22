@@ -426,6 +426,9 @@ class JTAGPHY(LiteXModule):
             # Lattice.
             elif device[:5] == "LFE5U":
                 jtag = ECP5JTAG()
+            # Efinix
+            elif device[:2] == "Ti":
+                jtag = EfinixJTAG(platform)
             # Altera/Intel.
             elif AlteraJTAG.get_primitive(device) is not None:
                 platform.add_reserved_jtag_decls()
@@ -445,12 +448,16 @@ class JTAGPHY(LiteXModule):
 
         # JTAG clock domain crossing ---------------------------------------------------------------
         if clock_domain != "jtag":
-            tx_cdc = stream.AsyncFIFO([("data", data_width)], 4)
-            tx_cdc = ClockDomainsRenamer({"write": clock_domain, "read": "jtag"})(tx_cdc)
-            rx_cdc = stream.AsyncFIFO([("data", data_width)], 4)
-            rx_cdc = ClockDomainsRenamer({"write": "jtag", "read": clock_domain})(rx_cdc)
-            self.tx_cdc = tx_cdc
-            self.rx_cdc = rx_cdc
+            self.tx_cdc = tx_cdc = stream.ClockDomainCrossing([("data", data_width)],
+                cd_from         = clock_domain,
+                cd_to           = "jtag",
+                with_common_rst = True
+            )
+            self.rx_cdc = rx_cdc = stream.ClockDomainCrossing([("data", data_width)],
+                cd_from         = "jtag",
+                cd_to           = clock_domain,
+                with_common_rst = True
+            )
             self.comb += [
                 sink.connect(tx_cdc.sink),
                 rx_cdc.source.connect(source)
@@ -511,6 +518,16 @@ class JTAGPHY(LiteXModule):
 class EfinixJTAG(LiteXModule):
     # id refer to the JTAG_USER{id}
     def __init__(self, platform, id=1):
+        self.reset   = Signal()
+        self.capture = Signal()
+        self.shift   = Signal()
+        self.update  = Signal()
+
+        self.tck = Signal()
+        self.tms = Signal()
+        self.tdi = Signal()
+        self.tdo = Signal()
+
         self.name     = f"jtag_{id}"
         self.platform = platform
         self.id       = id
@@ -542,6 +559,18 @@ class EfinixJTAG(LiteXModule):
         block["id"]   = self.id
         block["pins"] = pins
         self.platform.toolchain.ifacewriter.blocks.append(block)
+
+        self.comb += [
+            self.reset.eq(pins.RESET),
+            self.capture.eq(pins.CAPTURE),
+            self.shift.eq(pins.SHIFT),
+            self.update.eq(pins.UPDATE),
+
+            self.tck.eq(pins.TCK),
+            self.tms.eq(pins.TMS),
+            self.tdi.eq(pins.TDI),
+            pins.TDO.eq(self.tdo),
+        ]
 
     def bind_vexriscv_smp(self, cpu):
         self.comb += [

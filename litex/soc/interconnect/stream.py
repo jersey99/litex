@@ -13,7 +13,7 @@ from migen.util.misc import xdir
 from migen.genlib import fifo
 from migen.genlib.cdc import MultiReg, PulseSynchronizer, AsyncResetSynchronizer
 
-from litex.gen import LiteXContext
+from litex.gen import *
 
 from litex.soc.interconnect.csr import *
 
@@ -108,7 +108,7 @@ def get_single_ep(obj, filt):
     return list(eps.items())[0]
 
 
-class BinaryActor(Module):
+class BinaryActor(LiteXModule):
     def __init__(self, *args, **kwargs):
         self.build_binary_control(self.sink, self.source, *args, **kwargs)
 
@@ -167,7 +167,7 @@ class PipelinedActor(BinaryActor):
 
 # FIFO ---------------------------------------------------------------------------------------------
 
-class _FIFOWrapper(Module):
+class _FIFOWrapper(LiteXModule):
     def __init__(self, fifo_class, layout, depth):
         self.sink   = sink   = Endpoint(layout)
         self.source = source = Endpoint(layout)
@@ -182,7 +182,7 @@ class _FIFOWrapper(Module):
             ("last",    1)
         ]
 
-        self.submodules.fifo = fifo = fifo_class(layout_len(fifo_layout), depth)
+        self.fifo = fifo = fifo_class(layout_len(fifo_layout), depth)
         fifo_in  = Record(fifo_layout)
         fifo_out = Record(fifo_layout)
         self.comb += [
@@ -244,8 +244,9 @@ class AsyncFIFO(_FIFOWrapper):
 
 # ClockDomainCrossing ------------------------------------------------------------------------------
 
-class ClockDomainCrossing(Module):
+class ClockDomainCrossing(LiteXModule, DUID):
     def __init__(self, layout, cd_from="sys", cd_to="sys", depth=None, buffered=False, with_common_rst=False):
+        DUID.__init__(self)
         self.sink   = Endpoint(layout)
         self.source = Endpoint(layout)
 
@@ -253,13 +254,21 @@ class ClockDomainCrossing(Module):
 
         # Same Clk Domains.
         if cd_from == cd_to:
-            # No adaptation.
-            self.comb += self.sink.connect(self.source)
+            if buffered:
+                # Add Buffer.
+                self.buffer = ClockDomainsRenamer(cd_from)(Buffer(layout))
+                self.comb += [
+                    self.sink.connect(self.buffer.sink),
+                    self.buffer.source.connect(self.source),
+                ]
+            else:
+                # No adaptation.
+                self.comb += self.sink.connect(self.source)
         # Different Clk Domains.
         else:
             if with_common_rst:
                 # Create intermediate Clk Domains and generate a common Rst.
-                _cd_id   = id(self) # FIXME: Improve, used to allow build with anonymous modules.
+                _cd_id   = self.duid # Use duid for a deterministic unique ID.
                 _cd_rst  = Signal()
                 _cd_from = ClockDomain(f"from{_cd_id}")
                 _cd_to   = ClockDomain(f"to{_cd_id}")
@@ -288,7 +297,7 @@ class ClockDomainCrossing(Module):
 
 # Mux/Demux ----------------------------------------------------------------------------------------
 
-class Multiplexer(Module):
+class Multiplexer(LiteXModule):
     def __init__(self, layout, n):
         self.source = Endpoint(layout)
         sinks = []
@@ -306,7 +315,7 @@ class Multiplexer(Module):
         self.comb += Case(self.sel, cases)
 
 
-class Demultiplexer(Module):
+class Demultiplexer(LiteXModule):
     def __init__(self, layout, n):
         self.sink = Endpoint(layout)
         sources = []
@@ -326,7 +335,7 @@ class Demultiplexer(Module):
 
 # Gate ---------------------------------------------------------------------------------------------
 
-class Gate(Module):
+class Gate(LiteXModule):
     def __init__(self, layout, sink_ready_when_disabled=False):
         self.sink   = Endpoint(layout)
         self.source = Endpoint(layout)
@@ -344,7 +353,7 @@ class Gate(Module):
 
 # Converter ----------------------------------------------------------------------------------------
 
-class _UpConverter(Module):
+class _UpConverter(LiteXModule):
     def __init__(self, nbits_from, nbits_to, ratio, reverse):
         self.sink   = sink   = Endpoint([("data", nbits_from)])
         self.source = source = Endpoint([("data", nbits_to), ("valid_token_count", bits_for(ratio))])
@@ -399,7 +408,7 @@ class _UpConverter(Module):
         self.sync += If(load_part, source.valid_token_count.eq(demux + 1))
 
 
-class _DownConverter(Module):
+class _DownConverter(LiteXModule):
     def __init__(self, nbits_from, nbits_to, ratio, reverse):
         self.sink   = sink   = Endpoint([("data", nbits_from)])
         self.source = source = Endpoint([("data", nbits_to), ("valid_token_count", 1)])
@@ -439,7 +448,7 @@ class _DownConverter(Module):
         self.comb += source.valid_token_count.eq(last)
 
 
-class _IdentityConverter(Module):
+class _IdentityConverter(LiteXModule):
     def __init__(self, nbits_from, nbits_to, ratio, reverse):
         self.sink   = sink   = Endpoint([("data", nbits_from)])
         self.source = source = Endpoint([("data", nbits_to), ("valid_token_count", 1)])
@@ -470,7 +479,7 @@ def _get_converter_ratio(nbits_from, nbits_to):
     return converter_cls, ratio
 
 
-class Converter(Module):
+class Converter(Module): # FIXME: Switch to LiteXModule.
     def __init__(self, nbits_from, nbits_to,
         reverse                  = False,
         report_valid_token_count = False):
@@ -490,7 +499,7 @@ class Converter(Module):
             self.comb += converter.source.connect(self.source, omit=set(["valid_token_count"]))
 
 
-class StrideConverter(Module):
+class StrideConverter(LiteXModule):
     def __init__(self, description_from, description_to, reverse=False):
         self.sink   = sink   = Endpoint(description_from)
         self.source = source = Endpoint(description_to)
@@ -560,7 +569,7 @@ def inc_mod(s, m):
     return [s.eq(s + 1), If(s == (m -1), s.eq(0))]
 
 
-class Gearbox(Module):
+class Gearbox(LiteXModule):
     def __init__(self, i_dw, o_dw, msb_first=True):
         self.sink   = sink   = Endpoint([("data", i_dw)])
         self.source = source = Endpoint([("data", o_dw)])
@@ -647,7 +656,7 @@ class Shifter(PipelinedActor):
 
 # Monitor ------------------------------------------------------------------------------------------
 
-class Monitor(Module, AutoCSR):
+class Monitor(LiteXModule):
     def __init__(self, endpoint, count_width=32, clock_domain="sys",
         with_tokens     = False,
         with_overflows  = False,
@@ -707,7 +716,7 @@ class Monitor(Module, AutoCSR):
 
         # Tokens Count -----------------------------------------------------------------------------
         if with_tokens:
-            self.submodules.token_counter = MonitorCounter(
+            self.token_counter = MonitorCounter(
                 reset  = reset,
                 latch  = latch,
                 enable = endpoint.valid & endpoint.ready,
@@ -716,7 +725,7 @@ class Monitor(Module, AutoCSR):
 
         # Overflows Count (only useful when endpoint is expected to always be ready) ---------------
         if with_overflows:
-            self.submodules.overflow_counter = MonitorCounter(
+            self.overflow_counter = MonitorCounter(
                 reset  = reset,
                 latch  = latch,
                 enable = endpoint.valid & ~endpoint.ready,
@@ -725,7 +734,7 @@ class Monitor(Module, AutoCSR):
 
         # Underflows Count (only useful when endpoint is expected to always be valid) --------------
         if with_underflows:
-            self.submodules.underflow_counter = MonitorCounter(
+            self.underflow_counter = MonitorCounter(
                 reset  = reset,
                 latch  = latch,
                 enable = ~endpoint.valid & endpoint.ready,
@@ -734,7 +743,7 @@ class Monitor(Module, AutoCSR):
 
         # Packets Count ----------------------------------------------------------------------------
         if with_packets:
-            self.submodules.packet_counter = MonitorCounter(
+            self.packet_counter = MonitorCounter(
                 reset  = reset,
                 latch  = latch,
                 enable = endpoint.valid & getattr(endpoint, packet_delimiter) & endpoint.ready,
@@ -743,7 +752,7 @@ class Monitor(Module, AutoCSR):
 
 # Pipe ---------------------------------------------------------------------------------------------
 
-class PipeValid(Module):
+class PipeValid(LiteXModule):
     """Pipe valid/payload to cut timing path"""
     def __init__(self, layout):
         self.sink   = sink   = Endpoint(layout)
@@ -764,7 +773,7 @@ class PipeValid(Module):
         self.comb += sink.ready.eq(~source.valid | source.ready)
 
 
-class PipeReady(Module):
+class PipeReady(LiteXModule):
     """Pipe ready to cut timing path"""
     def __init__(self, layout):
         self.sink   = sink   = Endpoint(layout)
@@ -796,7 +805,7 @@ class PipeReady(Module):
 
 # Buffer -------------------------------------------------------------------------------------------
 
-class Buffer(Module):
+class Buffer(LiteXModule):
     """Pipe valid/payload and/or ready to cut timing path"""
     def __init__(self, layout, pipe_valid=True, pipe_ready=False):
         self.sink   = sink   = Endpoint(layout)
@@ -808,16 +817,16 @@ class Buffer(Module):
 
         # Pipe Valid (Optional).
         if pipe_valid:
-            self.submodules.pipe_valid = PipeValid(layout)
+            self.pipe_valid = PipeValid(layout)
             pipeline.append(self.pipe_valid)
 
         # Pipe Ready (Optional).
         if pipe_ready:
-            self.submodules.pipe_ready = PipeReady(layout)
+            self.pipe_ready = PipeReady(layout)
             pipeline.append(self.pipe_ready)
 
         # Buffer Pipeline.
-        self.submodules.pipeline = Pipeline(
+        self.pipeline = Pipeline(
             sink,
             *pipeline,
             source
@@ -845,7 +854,7 @@ class Cast(CombinatorialActor):
 
 # Unpack/Pack --------------------------------------------------------------------------------------
 
-class Unpack(Module):
+class Unpack(LiteXModule):
     def __init__(self, n, layout_to, reverse=False):
         self.source = source = Endpoint(layout_to)
         description_from = Endpoint(layout_to).description
@@ -889,7 +898,7 @@ class Unpack(Module):
         ]
 
 
-class Pack(Module):
+class Pack(LiteXModule):
     def __init__(self, layout_from, n, reverse=False):
         self.sink = sink = Endpoint(layout_from)
         description_to = Endpoint(layout_from).description
@@ -941,7 +950,7 @@ class Pack(Module):
 
 # Pipeline -----------------------------------------------------------------------------------------
 
-class Pipeline(Module):
+class Pipeline(LiteXModule):
     def __init__(self, *modules):
         self.modules = list(modules)
         if len(self.modules):

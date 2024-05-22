@@ -65,9 +65,7 @@ class RS232PHYTX(LiteXModule):
         count = Signal(4, reset_less=True)
 
         # Clock Phase Accumulator.
-        clk_phase_accum = RS232ClkPhaseAccum(tuning_word, mode="tx")
-        self.submodules += clk_phase_accum
-
+        self.clk_phase_accum = clk_phase_accum = RS232ClkPhaseAccum(tuning_word, mode="tx")
 
         # FSM
         self.fsm = fsm = FSM(reset_state="IDLE")
@@ -113,8 +111,7 @@ class RS232PHYRX(LiteXModule):
         count = Signal(4, reset_less=True)
 
         # Clock Phase Accumulator.
-        clk_phase_accum = RS232ClkPhaseAccum(tuning_word, mode="rx")
-        self.submodules += clk_phase_accum
+        self.clk_phase_accum = clk_phase_accum = RS232ClkPhaseAccum(tuning_word, mode="rx")
 
         # Resynchronize pads.rx and generate delayed version.
         rx   = Signal()
@@ -310,11 +307,11 @@ class Stream2Wishbone(LiteXModule):
     def __init__(self, phy=None, clk_freq=None, data_width=32, address_width=32):
         self.sink     = sink   = stream.Endpoint([("data", 8)]) if phy is None else phy.source
         self.source   = source = stream.Endpoint([("data", 8)]) if phy is None else phy.sink
-        self.wishbone = wishbone.Interface(data_width=data_width, adr_width=address_width)
+        self.wishbone = wishbone.Interface(data_width=data_width, address_width=address_width, addressing="word")
 
         # # #
         assert data_width    in [8, 16, 32]
-        assert address_width in [8, 16, 32]
+        assert address_width in [8, 16, 32, 64]
 
         cmd              = Signal(8,                           reset_less=True)
         incr             = Signal()
@@ -434,17 +431,17 @@ class Stream2Wishbone(LiteXModule):
 
 
 class UARTBone(Stream2Wishbone):
-    def __init__(self, phy, clk_freq, cd="sys"):
+    def __init__(self, phy, clk_freq, cd="sys", address_width=32):
         if cd == "sys":
             self.phy = phy
-            Stream2Wishbone.__init__(self, self.phy, clk_freq=clk_freq)
+            Stream2Wishbone.__init__(self, self.phy, clk_freq=clk_freq, address_width=address_width)
         else:
             self.phy = ClockDomainsRenamer(cd)(phy)
             self.tx_cdc = stream.ClockDomainCrossing([("data", 8)], cd_from="sys", cd_to=cd)
             self.rx_cdc = stream.ClockDomainCrossing([("data", 8)], cd_from=cd,    cd_to="sys")
             self.comb += self.phy.source.connect(self.rx_cdc.sink)
             self.comb += self.tx_cdc.source.connect(self.phy.sink)
-            Stream2Wishbone.__init__(self, clk_freq=clk_freq)
+            Stream2Wishbone.__init__(self, clk_freq=clk_freq, address_width=address_width)
             self.comb += self.rx_cdc.source.connect(self.sink)
             self.comb += self.source.connect(self.tx_cdc.sink)
 

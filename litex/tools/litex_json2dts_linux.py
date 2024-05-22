@@ -21,18 +21,37 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
     # CPU Architectures ----------------------------------------------------------------------------
     # CHECKME: Move to core and generate a constant for each CPU?
     cpu_architectures = {
-        "mor1kx"             : "or1k",
-        "marocchino"         : "or1k",
-        "vexriscv smp-linux" : "riscv",
-        "rocketrv64[imac]"   : "riscv",
-        "naxriscv"           : "riscv",
+        "mor1kx"     : "or1k",
+        "marocchino" : "or1k",
+        "vexriscv"   : "riscv",
+        "rocket"     : "riscv",
+        "naxriscv"   : "riscv",
     }
 
     # CPU Parameters -------------------------------------------------------------------------------
     ncpus    = int(d["constants"].get("config_cpu_count", 1))
-    cpu_name = d["constants"].get("config_cpu_human_name")
+    cpu_name = d["constants"].get("config_cpu_name")
     cpu_arch = cpu_architectures[cpu_name]
-    cpu_isa  = d["constants"].get("config_cpu_isa", None)
+    cpu_isa  = d["constants"].get("config_cpu_isa", None) # kernel < 6.6.0
+
+    # kernel >= 6.6.0
+    cpu_isa_base = cpu_isa[:5]
+    cpu_isa_extensions = "\"i\"" # default
+    # Append with optionals
+    if "m" in cpu_isa[5:]:
+        cpu_isa_extensions += ", \"m\""
+    if "a" in cpu_isa[5:]:
+        cpu_isa_extensions += ", \"a\""
+    if "f" in cpu_isa[5:]:
+        cpu_isa_extensions += ", \"f\""
+    if "d" in cpu_isa[5:]:
+        cpu_isa_extensions += ", \"d\""
+    if "c" in cpu_isa[5:]:
+        cpu_isa_extensions += ", \"c\""
+    # rocket specific extensions
+    if "rocket" in cpu_name:
+        cpu_isa_extensions += ", \"zicsr\", \"zifencei\", \"zihpm\""
+
     cpu_mmu  = d["constants"].get("config_cpu_mmu", None)
 
     # Header ---------------------------------------------------------------------------------------
@@ -68,14 +87,23 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
         initrd_enabled = True
         initrd_size = os.path.getsize(initrd)
 
+    # if json constants contains localip ethernet has been enabled
+    if "localip1" in d["constants"]:
+        localip  = '.'.join([str(d["constants"][f"localip{i}"]) for i in range(1,5)])
+        remoteip = '.'.join([str(d["constants"][f"remoteip{i}"]) for i in range(1,5)])
+        ip       = f" ip={localip}:{remoteip}:{remoteip}:255.255.255.0::eth0:off:::"
+    else:
+        ip = ""
+
     if root_device is None:
         root_device = "ram0"
 
     dts += """
         chosen {{
-            bootargs = "{console} {rootfs}";""".format(
+            bootargs = "{console} {rootfs}{ip}";""".format(
     console = "console=liteuart earlycon=liteuart,0x{:x}".format(d["csr_bases"]["uart"]),
-    rootfs  = "rootwait root=/dev/{}".format(root_device))
+    rootfs  = "rootwait root=/dev/{}".format(root_device),
+    ip      = ip)
 
     if initrd_enabled is True:
         dts += """
@@ -141,6 +169,18 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
     i_tlb_size = d["constants"]["config_cpu_itlb_size"],
     i_tlb_ways = d["constants"]["config_cpu_itlb_ways"])
 
+        # Rocket specific attributes
+        if ("rocket" in cpu_name):
+            extra_attr = """
+                hardware-exec-breakpoint-count = <1>;
+                next-level-cache = <&memory>;
+                riscv,pmpgranularity = <4>;
+                riscv,pmpregions = <8>;
+                tlb-split;
+"""
+        else:
+            extra_attr = ""
+
         # CPU(s) Topology.
         cpu_map = ""
         if ncpus > 1:
@@ -168,12 +208,15 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
                 device_type = "cpu";
                 compatible = "riscv";
                 riscv,isa = "{cpu_isa}";
+                riscv,isa-base = "{cpu_isa_base}";
+                riscv,isa-extensions = {cpu_isa_extensions};
                 mmu-type = "riscv,{cpu_mmu}";
                 reg = <{cpu}>;
                 clock-frequency = <{sys_clk_freq}>;
                 status = "okay";
                 {cache_desc}
                 {tlb_desc}
+                {extra_attr}
                 L{irq}: interrupt-controller {{
                     #address-cells = <0>;
                     #interrupt-cells = <0x00000001>;
@@ -182,11 +225,14 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
                 }};
             }};
 """.format(cpu=cpu, irq=cpu,
-    sys_clk_freq = d["constants"]["config_clock_frequency"],
-    cpu_isa      = cpu_isa,
-    cpu_mmu      = cpu_mmu,
-    cache_desc   = cache_desc,
-    tlb_desc     = tlb_desc)
+    sys_clk_freq       = d["constants"]["config_clock_frequency"],
+    cpu_isa            = cpu_isa, # for kernel < 6.6.0
+    cpu_isa_base       = cpu_isa_base, # for kernel >= 6.6.0
+    cpu_isa_extensions = cpu_isa_extensions, # for kernel >= 6.6.0
+    cpu_mmu            = cpu_mmu,
+    cache_desc         = cache_desc,
+    tlb_desc           = tlb_desc,
+    extra_attr         = extra_attr)
         dts += """
             {cpu_map}
         }};
@@ -210,7 +256,7 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
     # Memory ---------------------------------------------------------------------------------------
 
     dts += """
-        memory@{main_ram_base:x} {{
+        memory: memory@{main_ram_base:x} {{
             device_type = "memory";
             reg = <0x{main_ram_base:x} 0x{main_ram_size:x}>;
         }};
@@ -287,12 +333,23 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
         dts += """
             lintc0: clint@{clint_base:x} {{
                 compatible = "riscv,clint0";
-                interrupts-extended = <&L4 3 &L4 7>;
+                interrupts-extended = <
+                    {cpu_mapping}>;
                 reg = <0x{clint_base:x} 0x10000>;
                 reg-names = "control";
             }};
-""".format(clint_base=d["memories"]["clint"]["base"])
+""".format(
+        clint_base=d["memories"]["clint"]["base"],
+        cpu_mapping =("\n" + " "*20).join(["&L{} 3 &L{} 7".format(cpu, cpu) for cpu in range(ncpus)]))
     if cpu_arch == "riscv":
+        if "rocket" in cpu_name:
+            extra_attr = """
+                reg-names = "control";
+                riscv,max-priority = <7>;
+"""
+        else:
+            extra_attr = ""
+
         dts += """
             intc0: interrupt-controller@{plic_base:x} {{
                 compatible = "sifive,fu540-c000-plic", "sifive,plic-1.0.0";
@@ -303,10 +360,12 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
                 interrupts-extended = <
                     {cpu_mapping}>;
                 riscv,ndev = <32>;
+                {extra_attr}
             }};
 """.format(
         plic_base   =d["memories"]["plic"]["base"],
-        cpu_mapping =("\n" + " "*20).join(["&L{} 11 &L{} 9".format(cpu, cpu) for cpu in range(ncpus)]))
+        cpu_mapping =("\n" + " "*20).join(["&L{} 11 &L{} 9".format(cpu, cpu) for cpu in range(ncpus)]),
+        extra_attr  =extra_attr)
 
     elif cpu_arch == "or1k":
         dts += """
@@ -317,10 +376,34 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
                 status = "okay";
             };
 """
+    if (cpu_arch == "riscv") and ("rocket" in cpu_name):
+        dts += """
+            dbg_ctl: debug-controller@0 {{
+                compatible = "sifive,debug-013", "riscv,debug-013";
+                interrupts-extended = <
+                    {cpu_mapping}>;
+                reg = <0x0 0x1000>;
+                reg-names = "control";
+            }};
+            err_dev: error-device@3000 {{
+                compatible = "sifive,error0";
+                reg = <0x3000 0x1000>;
+            }};
+            ext_it: external-interrupts {{
+                interrupts = <1 2 3 4 5 6 7 8>;
+            }};
+            rom: rom@10000 {{
+                compatible = "sifive,rom0";
+                reg = <0x10000 0x10000>;
+                reg-names = "mem";
+            }};
+""".format(
+        cpu_mapping =("\n" + " "*20).join(["&L{} 0x3F".format(cpu) for cpu in range(ncpus)]))
     # UART -----------------------------------------------------------------------------------------
 
     if "uart" in d["csr_bases"]:
         aliases["serial0"] = "liteuart0"
+        it_incr = {True: 1, False: 0}["rocket" in cpu_name]
         dts += """
             liteuart0: serial@{uart_csr_base:x} {{
                 compatible = "litex,liteuart";
@@ -330,13 +413,17 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
             }};
 """.format(
     uart_csr_base  = d["csr_bases"]["uart"],
-    uart_interrupt = "" if polling else "interrupts = <{}>;".format(d["constants"]["uart_interrupt"]))
+    uart_interrupt = "" if polling else "interrupts = <{}>;".format(int(d["constants"]["uart_interrupt"]) + it_incr))
 
     # Ethernet -------------------------------------------------------------------------------------
-
-    if "ethphy" in d["csr_bases"] and "ethmac" in d["csr_bases"]:
-        dts += """
-            mac0: mac@{ethmac_csr_base:x} {{
+    for i in [''] + list(range(0, 10)):
+        idx = (0 if i == '' else i)
+        ethphy_name = "ethphy" + str(i)
+        ethmac_name = "ethmac" + str(i)
+        it_incr = {True: 1, False: 0}["rocket" in cpu_name]
+        if ethphy_name in d["csr_bases"] and ethmac_name in d["csr_bases"]:
+            dts += """
+            mac{idx}: mac@{ethmac_csr_base:x} {{
                 compatible = "litex,liteeth";
                 reg = <0x{ethmac_csr_base:x} 0x7c>,
                       <0x{ethphy_csr_base:x} 0x0a>,
@@ -349,14 +436,15 @@ def generate_dts(d, initrd_start=None, initrd_size=None, initrd=None, root_devic
                 status = "okay";
             }};
 """.format(
-    ethphy_csr_base  = d["csr_bases"]["ethphy"],
-    ethmac_csr_base  = d["csr_bases"]["ethmac"],
-    ethmac_mem_base  = d["memories"]["ethmac"]["base"],
-    ethmac_mem_size  = d["memories"]["ethmac"]["size"],
-    ethmac_rx_slots  = d["constants"]["ethmac_rx_slots"],
-    ethmac_tx_slots  = d["constants"]["ethmac_tx_slots"],
-    ethmac_slot_size  = d["constants"]["ethmac_slot_size"],
-    ethmac_interrupt = "" if polling else "interrupts = <{}>;".format(d["constants"]["ethmac_interrupt"]))
+    idx = idx,
+    ethphy_csr_base  = d["csr_bases"][ethphy_name],
+    ethmac_csr_base  = d["csr_bases"][ethmac_name],
+    ethmac_mem_base  = d["memories"][ethmac_name]["base"],
+    ethmac_mem_size  = d["memories"][ethmac_name]["size"],
+    ethmac_rx_slots  = d["constants"][ethmac_name + "_rx_slots"],
+    ethmac_tx_slots  = d["constants"][ethmac_name + "_tx_slots"],
+    ethmac_slot_size  = d["constants"][ethmac_name + "_slot_size"],
+    ethmac_interrupt = "" if polling else "interrupts = <{}>;".format(int(d["constants"][ethmac_name + "_interrupt"]) + it_incr))
 
     # USB OHCI -------------------------------------------------------------------------------------
 

@@ -1,21 +1,97 @@
-[> Changes since 2023.08
+[> Changes since 2023.12
 ------------------------
 	[> Fixed
 	--------
+	- integration/soc               : Fixed typo in cpu mem_bus axi-via-wb downconvert
+	- interconnect/ahb/AHB2Wishbone : Fixed size check that was too restrictive.
+	- liteeth/phy/gw5rgmii          : Fixed Clk assignments.
+	- build/efinix/programmer       : Updated for compatibility with latest Efinity versions.
+	- litespi/software:             : Fixed SPI Flash Clk Divider computation when with L2 Cache.
+	- litepcie/us(p)pciephy         : Fixed x8 / 256-bit wide case.
+	- litex_sim/serial2console      : Fixed RX backpressure handling.
+	- litedram/frontend/avalon      : Fixed and cleaned-up.
+	- litex_sim/video               : Fixed pixel format to RGBA.
+	- build/xilinx/common           : Fixed missing clk parameter on XilinxSDRTristateImpl.
+	- soc/interconnect              : Fixed CSR/LiteXModule issue on WishboneSRAM/AXILiteSRAM.
 
 	[> Added
 	--------
-	cpu/naxriscv      : Added SMP support.
-	cpu/neorv32       : Added Debug support and update core complex.
-	cpu/vexriscv_smp  : Added hardware breakpoints support.
-	build/colognechip : Added initial support.
-	soc/cores/video   : Added VTG/DMA synchronization stage to VideoFramebuffer.
-	litepcie/dma      : Improved LitePCIeDMADescriptorSplitter timings.
+	- build/openfpgaloader          : Added kwargs support to flash for specific/less common cases.
+	- cpu/gowin_emcu                : Improved/Cleaned-up.
+	- interconnect/ahb              : Added data_width/address_width parameters.
+	- interconnect/ahb              : Added proper byte/sel support to AHB2Wishbone.
+	- cpu/gowin_ae350               : Added initial support.
+	- cpu/naxriscv                  : Updated arch definition and added rvc configuration parameters.
+	- cpu/vexriscv_smp              : Added csr/clint/plic base address configuration parameters.
+	- liteeth/phy                   : Added 7-Series/Ultrascale(+) 2500BaseX PHYs.
+	- litespi/sdrphy:               : Allowed flash parameter to be None.
+	- litespi/integration           : Improved integration and simplifications.
+	- export/builder                : Added import/merge of Sub-SoCs .json files.
+	- cpu/vexriscv_smp              : Added reset_address/vector support.
+	- litex_sim                     : Added jtagremote support.
+	- soc/add_master                : Added region support to allow/limit access to a specific region.
+	- litex_json2dts_linux          : Added ip= bootarg when local/remote ips are defined.
+	- cores/jtag                    : Added JTAGBone support for Zynq.
+	- cores/ram/lattice_nx          : Improved timings.
+	- liteeth_gen                   : Added QPLL/BUFH/BUFG parameters for A7 1000BaseX PHY.
+	- litex_sim                     : Added Video Color Bar support.
+	- cpu/neorv32                   : Updated to v1.9.7.
+	- cores/hyperbus                : Added latency configuration and variable latency support.
+	- cpu/cv32e41p                  : Added ISR support.
+	- litesdcard                    : Improved SDPHYClocker (Timings).
+	- cpu/vexriscv_smp              : Added baremetal IRQ support.
+	- cpu/naxriscv                  : Added baremetal IRQ support.
+	- cpu/zynqmp                    : Added Ethernet, UART, I2C support and improved AXI Master.
 
 	[> Changed
 	----------
-	build/osfpga: Removed initial support (would need feedbacks/updates).
 
+[> 2023.12, released on December 25th 2023
+------------------------------------------
+	[> Fixed
+	--------
+	- liteeth/arp           : Fixed response on table update.
+	- litesata/us(p)sataphy : Fixed data_width=32 case.
+	- clock/lattice_ecp5    : Fixed phase calculation.
+	- interconnect/axi      : Fixed AXILite2CSR read access (1 CSR cycle instead of 2).
+
+	[> Added
+	--------
+	- cpu/naxriscv          : Added SMP support.
+	- cpu/neorv32           : Added Debug support and update core complex.
+	- cpu/vexriscv_smp      : Added hardware breakpoints support.
+	- build/colognechip     : Added initial support.
+	- soc/cores/video       : Added VTG/DMA synchronization stage to VideoFramebuffer.
+	- litepcie/dma          : Improved LitePCIeDMADescriptorSplitter timings.
+	- interconnect/wishbone : Added linear burst support to DownConverter.
+	- integration/SoC       : Added with_jtagbone/with_uartbone support.
+	- soc/cores             : Added Ti60F100 HyperRAM support.
+	- build/xilinx          : Added initial OpenXC7 support (and improved Yosys-NextPnr).
+	- build/efinix          : Added JTAG-UART/JTAGBone support.
+	- interconnect/wishbone : Added byte/word addressing support.
+	- cores/uart            : Added 64-bit addressing support to Stream2Wishbone.
+	- tools                 : Added 64-bit addressing support to litex_server/client.
+	- cores/cpu             : Added 64-bit support to CPUNone.
+	- cores/cpu             : Added KianV (RV32IMA) initial support.
+	- litedram              : Added initial GW5DDRPHY (compiles but not yet working).
+	- build/gowin           : Added GowinTristate implementation.
+	- litepcie              : Simplify/Cleanup Ultrascale(+) integration and allow .xci generation from .tcl.
+	- litepcie              : Initial 64-bit DMA suppport.
+	- bios                  : Added bios_format / --bios-format to allow enabling float/double printf.
+	- soc/cores/clock       : Added proper clock feedback support on Efinix TRIONPLL/TITANIUMPLL.
+	- liteiclink/phy        : Added Efinix support/examples on Trion/Titanium.
+	- liteiclink/serwb      : Reused Etherbone from LiteEth to avoid code duplication.
+	- interconnect          : Added 64-bit support to Wishbone/AXI-Lite/AXI.
+	- jtag                  : Fixed firmware upload over JTAG-UART.
+	- jtag                  : Improved speed (~X16) on JTABone/JTAGUART on all supported devices (Xilinx, Altera, Efinix, etc...)
+	- litesata/phy          : Added GTHE4 support on Ultrascale+.
+	- litex_boards          : Added Machdyne's Mozart with the Sechzig ML1 module support.
+	- liteiclink            : Added clk_ratio of 1:2, 1:4 on Efinix/SerWB to make clocking more flexible.
+
+	[> Changed
+	----------
+	- build/osfpga          : Removed initial support (would need feedbacks/updates).
+	- python3               : Updated minimum python3 version to 3.7 (To allow more than 255 arguments in functions).
 
 [> 2023.08, released on September 14th 2023
 -------------------------------------------

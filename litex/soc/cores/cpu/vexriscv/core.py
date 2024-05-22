@@ -82,7 +82,7 @@ GCC_FLAGS = {
 
 # VexRiscv Timer -----------------------------------------------------------------------------------
 
-class VexRiscvTimer(Module, AutoCSR):
+class VexRiscvTimer(LiteXModule):
     def __init__(self):
         self._latch    = CSR()
         self._time     = CSRStatus(64)
@@ -140,8 +140,8 @@ class VexRiscv(CPU, AutoCSR):
         self.external_variant = None
         self.reset            = Signal()
         self.interrupt        = Signal(32)
-        self.ibus             = ibus = wishbone.Interface()
-        self.dbus             = dbus = wishbone.Interface()
+        self.ibus             = ibus = wishbone.Interface(data_width=32, address_width=32, addressing="word")
+        self.dbus             = dbus = wishbone.Interface(data_width=32, address_width=32, addressing="word")
         self.periph_buses     = [ibus, dbus] # Peripheral buses (Connected to main SoC's bus).
         self.memory_buses     = []           # Memory buses (Connected directly to LiteDRAM).
 
@@ -210,6 +210,7 @@ class VexRiscv(CPU, AutoCSR):
         self.o_cmd_ready           = Signal()
         self.o_rsp_data            = Signal(32)
         self.o_resetOut            = Signal()
+        self.o_halted              = Signal()
 
         reset_debug_logic = Signal()
 
@@ -217,10 +218,10 @@ class VexRiscv(CPU, AutoCSR):
         self.transfer_in_progress  = Signal()
         self.transfer_wait_for_ack = Signal()
 
-        self.debug_bus = wishbone.Interface()
+        self.debug_bus = wishbone.Interface(data_width=32, address_width=32, addressing="word")
 
         self.sync += self.debug_bus.dat_r.eq(self.o_rsp_data)
-        self.sync += debug_reset.eq(reset_debug_logic | ResetSignal())
+        self.sync += debug_reset.eq(reset_debug_logic)
 
         self.sync += [
             # CYC is held high for the duration of the transfer.
@@ -268,17 +269,18 @@ class VexRiscv(CPU, AutoCSR):
         ]
 
         self.cpu_params.update(
-            i_reset = ResetSignal() | self.reset | debug_reset,
+            i_reset                         = ResetSignal("sys") | self.reset | debug_reset,
             i_iBusWishbone_ERR              = self.ibus.err | ibus_err,
             i_dBusWishbone_ERR              = self.dbus.err | dbus_err,
-            i_debugReset                    = ResetSignal(),
+            i_debugReset                    = ResetSignal("sys") | self.reset,
             i_debug_bus_cmd_valid           = self.i_cmd_valid,
             i_debug_bus_cmd_payload_wr      = self.i_cmd_payload_wr,
             i_debug_bus_cmd_payload_address = self.i_cmd_payload_address,
             i_debug_bus_cmd_payload_data    = self.i_cmd_payload_data,
             o_debug_bus_cmd_ready           = self.o_cmd_ready,
             o_debug_bus_rsp_data            = self.o_rsp_data,
-            o_debug_resetOut                = self.o_resetOut
+            o_debug_resetOut                = self.o_resetOut,
+            o_halted                        = self.o_halted,
         )
 
     def add_cfu(self, cfu_filename):
@@ -320,7 +322,7 @@ class VexRiscv(CPU, AutoCSR):
             i_rsp_ready                = cfu_bus.rsp.ready,
             o_rsp_payload_outputs_0    = cfu_bus.rsp.payload.outputs_0,
             i_clk                      = ClockSignal("sys"),
-            i_reset                    = ResetSignal("sys"),
+            i_reset                    = ResetSignal("sys") | self.reset,
         )
         self.platform.add_source(cfu_filename)
 

@@ -12,7 +12,8 @@ from litex.build.colognechip import common, colognechip
 # CologneChipPlatform ------------------------------------------------------------------------------
 
 class CologneChipPlatform(GenericPlatform):
-    bitstream_ext = "_00.cfg.bit"
+    _bitstream_ext = "_00.cfg.bit"
+    _jtag_support  = False
 
     _supported_toolchains = ["colognechip"]
 
@@ -27,7 +28,8 @@ class CologneChipPlatform(GenericPlatform):
         return GenericPlatform.get_verilog(self, *args,
             special_overrides = so,
             attr_translate    = self.toolchain.attr_translate,
-            **kwargs)
+            **kwargs
+        )
 
     def build(self, *args, **kwargs):
         return self.toolchain.build(self, *args, **kwargs)

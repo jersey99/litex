@@ -693,32 +693,39 @@ class VideoFrameBuffer(LiteXModule):
             video_pipe_source = self.cdc.source
 
         # Video Synchronization/Generation.
-        fsm = FSM(reset_state="VTG-SYNC")
+        first = Signal()
+        fsm = FSM(reset_state="SYNC")
         fsm = ClockDomainsRenamer(clock_domain)(fsm)
         fsm = ResetInserter()(fsm)
         self.submodules += fsm
         self.specials += MultiReg(self.dma.fsm.reset, fsm.reset, clock_domain)
-        fsm.act("VTG-SYNC",
+        fsm.act("SYNC",
             vtg_sink.ready.eq(1),
+            If(fsm.reset,
+                vtg_sink.ready.eq(0),
+                NextValue(first, 1)
+            ),
             If(vtg_sink.valid & vtg_sink.last,
-                NextState("DMA-SYNC")
-            )
-        )
-        fsm.act("DMA-SYNC",
-            video_pipe_source.ready.eq(1),
-            If(video_pipe_source.valid & video_pipe_source.last,
                 NextState("RUN")
-            )
+            ),
+            vtg_sink.connect(source, keep={"hsync", "vsync"}),
         )
         fsm.act("RUN",
             vtg_sink.ready.eq(1),
             If(vtg_sink.valid & vtg_sink.de,
                 video_pipe_source.connect(source, keep={"valid", "ready"}),
+                If(first,
+                    source.valid.eq(0)
+                ),
                 vtg_sink.ready.eq(source.valid & source.ready),
-
+                If(video_pipe_source.valid & video_pipe_source.last,
+                    NextValue(first, 0),
+                    NextState("SYNC"),
+                )
             ),
             vtg_sink.connect(source, keep={"de", "hsync", "vsync"}),
         )
+
         if (depth == 32):
             self.comb += [
                source.r.eq(video_pipe_source.data[ 0: 8]),
@@ -835,7 +842,7 @@ class VideoHDMIPHY(LiteXModule):
             for color, channel in _dvi_c2d.items():
                 # TMDS Encoding.
                 encoder = ClockDomainsRenamer(clock_domain)(TMDSEncoder())
-                setattr(self.submodules, f"{color}_encoder", encoder)
+                self.add_module(name=f"{color}_encoder_{pol}", module=encoder)
                 self.comb += encoder.d.eq(getattr(sink, color))
                 self.comb += encoder.c.eq(Cat(sink.hsync, sink.vsync) if channel == 0 else 0)
                 self.comb += encoder.de.eq(sink.de)
@@ -848,7 +855,7 @@ class VideoHDMIPHY(LiteXModule):
                     data_o       = data_o,
                     clock_domain = clock_domain,
                 )
-                setattr(self.submodules, f"{color}_serializer", serializer)
+                self.add_module(name=f"{color}_serializer_{pol}", module=serializer)
 
 # HDMI (Gowin).
 
@@ -872,7 +879,7 @@ class VideoGowinHDMIPHY(LiteXModule):
         for color, channel in _dvi_c2d.items():
             # TMDS Encoding.
             encoder = ClockDomainsRenamer(clock_domain)(TMDSEncoder())
-            setattr(self.submodules, f"{color}_encoder", encoder)
+            self.add_module(name=f"{color}_encoder", module=encoder)
             self.comb += encoder.d.eq(getattr(sink, color))
             self.comb += encoder.c.eq(Cat(sink.hsync, sink.vsync) if channel == 0 else 0)
             self.comb += encoder.de.eq(sink.de)
@@ -916,7 +923,7 @@ class VideoS6HDMIPHY(LiteXModule):
 
             # TMDS Encoding.
             encoder = ClockDomainsRenamer(clock_domain)(TMDSEncoder())
-            setattr(self.submodules, f"{color}_encoder", encoder)
+            self.add_module(name=f"{color}_encoder", module=encoder)
             self.comb += encoder.d.eq(getattr(sink, color))
             self.comb += encoder.c.eq(Cat(sink.hsync, sink.vsync) if channel == 0 else 0)
             self.comb += encoder.de.eq(sink.de)
@@ -928,7 +935,7 @@ class VideoS6HDMIPHY(LiteXModule):
                 data_o       = pad_o,
                 clock_domain = clock_domain,
             )
-            setattr(self.submodules, f"{color}_serializer", serializer)
+            self.add_module(name=f"{color}_serializer", module=serializer)
             pad_p = getattr(pads, f"data{channel}_p")
             pad_n = getattr(pads, f"data{channel}_n")
             self.specials += Instance("OBUFDS", i_I=pad_o, o_O=pad_p, o_OB=pad_n)

@@ -55,6 +55,8 @@ class NaxRiscv(CPU):
     jtag_instruction = False
     with_dma         = False
     litedram_width   = 32
+    l2_bytes        = 128*1024
+    l2_ways         = 8
 
     # ABI.
     @staticmethod
@@ -67,7 +69,7 @@ class NaxRiscv(CPU):
     # Arch.
     @staticmethod
     def get_arch():
-        arch = f"rv{NaxRiscv.xlen}ima"
+        arch = f"rv{NaxRiscv.xlen}i2p0_ma"
         if NaxRiscv.with_fpu:
             arch += "fd"
         if NaxRiscv.with_rvc:
@@ -91,7 +93,7 @@ class NaxRiscv(CPU):
     def gcc_flags(self):
         flags =  f" -march={NaxRiscv.get_arch()} -mabi={NaxRiscv.get_abi()}"
         flags += f" -D__NaxRiscv__"
-        flags += f" -DUART_POLLING"
+        flags += f" -D__riscv_plic__"
         return flags
 
     # Reserved Interrupts.
@@ -103,16 +105,19 @@ class NaxRiscv(CPU):
     @staticmethod
     def args_fill(parser):
         cpu_group = parser.add_argument_group(title="CPU options")
-        cpu_group.add_argument("--scala-file",    action="append",     help="Specify the scala files used to configure NaxRiscv.")
-        cpu_group.add_argument("--scala-args",    action="append",     help="Add arguements for the scala run time. Ex : --scala-args 'rvc=true,mmu=false'")
-        cpu_group.add_argument("--xlen",          default=32,          help="Specify the RISC-V data width.")
-        cpu_group.add_argument("--cpu-count",     default=1,           help="How many NaxRiscv CPU")
-        cpu_group.add_argument("--with-coherent-dma", action="store_true", help="Enable coherent DMA accesses")
-        cpu_group.add_argument("--with-jtag-tap", action="store_true", help="Add a embedded JTAG tap for debugging")
-        cpu_group.add_argument("--with-jtag-instruction", action="store_true", help="Add a JTAG instruction port which implement tunneling for debugging (TAP not included)")
-        cpu_group.add_argument("--update-repo",   default="recommended", choices=["latest","wipe+latest","recommended","wipe+recommended","no"], help="Specify how the NaxRiscv & SpinalHDL repo should be updated (latest: update to HEAD, recommended: Update to known compatible version, no: Don't update, wipe+*: Do clean&reset before checkout)")
-        cpu_group.add_argument("--no-netlist-cache", action="store_true", help="Always (re-)build the netlist")
-        cpu_group.add_argument("--with-fpu",      action="store_true", help="Enable the F32/F64 FPU")
+        cpu_group.add_argument("--scala-file",            action="append",       help="Specify the scala files used to configure NaxRiscv.")
+        cpu_group.add_argument("--scala-args",            action="append",       help="Add arguements for the scala run time. Ex : --scala-args 'rvc=true,mmu=false'")
+        cpu_group.add_argument("--xlen",                  default=32,            help="Specify the RISC-V data width.")
+        cpu_group.add_argument("--cpu-count",             default=1,             help="How many NaxRiscv CPU.")
+        cpu_group.add_argument("--with-coherent-dma",     action="store_true",   help="Enable coherent DMA accesses.")
+        cpu_group.add_argument("--with-jtag-tap",         action="store_true",   help="Add a embedded JTAG tap for debugging.")
+        cpu_group.add_argument("--with-jtag-instruction", action="store_true",   help="Add a JTAG instruction port which implement tunneling for debugging (TAP not included).")
+        cpu_group.add_argument("--update-repo",           default="recommended", choices=["latest","wipe+latest","recommended","wipe+recommended","no"], help="Specify how the NaxRiscv & SpinalHDL repo should be updated (latest: update to HEAD, recommended: Update to known compatible version, no: Don't update, wipe+*: Do clean&reset before checkout)")
+        cpu_group.add_argument("--no-netlist-cache",      action="store_true",   help="Always (re-)build the netlist.")
+        cpu_group.add_argument("--with-fpu",              action="store_true",   help="Enable the F32/F64 FPU.")
+        cpu_group.add_argument("--with-rvc",              action="store_true",   help="Enable the Compress ISA extension.")
+        cpu_group.add_argument("--l2-bytes",              default=128*1024,      help="NaxRiscv L2 bytes, default 128 KB.")
+        cpu_group.add_argument("--l2-ways",               default=8,             help="NaxRiscv L2 ways, default 8.")
 
     @staticmethod
     def args_read(args):
@@ -123,6 +128,7 @@ class NaxRiscv(CPU):
         NaxRiscv.update_repo      = args.update_repo
         NaxRiscv.no_netlist_cache = args.no_netlist_cache
         NaxRiscv.with_fpu         = args.with_fpu
+        NaxRiscv.with_rvc         = args.with_rvc
         if args.scala_file:
             NaxRiscv.scala_files = args.scala_file
         if args.scala_args:
@@ -136,12 +142,15 @@ class NaxRiscv(CPU):
             NaxRiscv.linker_output_format = f"elf{xlen}-littleriscv"
         if args.cpu_count:
             NaxRiscv.cpu_count = args.cpu_count
+        if args.l2_bytes:
+            NaxRiscv.l2_bytes = args.l2_bytes
+        if args.l2_ways:
+            NaxRiscv.l2_ways = args.l2_ways
 
 
     def __init__(self, platform, variant):
         self.platform         = platform
         self.variant          = "standard"
-        self.human_name       = self.human_name
         self.reset            = Signal()
         self.interrupt        = Signal(32)
         self.pbus             = pbus = axi.AXILiteInterface(address_width=32, data_width=32)
@@ -157,11 +166,12 @@ class NaxRiscv(CPU):
         # CPU Instance.
         self.cpu_params = dict(
             # Clk/Rst.
-            i_clk   = ClockSignal("sys"),
-            i_reset = ResetSignal("sys") | self.reset,
+            i_socClk     = ClockSignal("sys"),
+            i_asyncReset = ResetSignal("sys") | self.reset,
 
-            o_patcher_tracer_valid=self.tracer_valid,
-            o_patcher_tracer_payload=self.tracer_payload,
+            # Patcher/Tracer.
+            o_patcher_tracer_valid   = self.tracer_valid,
+            o_patcher_tracer_payload = self.tracer_payload,
 
             # Interrupt.
             i_peripheral_externalInterrupts_port = self.interrupt,
@@ -185,54 +195,61 @@ class NaxRiscv(CPU):
             i_pBus_rvalid  = pbus.r.valid,
             o_pBus_rready  = pbus.r.ready,
             i_pBus_rdata   = pbus.r.data,
-            i_pBus_rresp   = pbus.r.resp
+            i_pBus_rresp   = pbus.r.resp,
         )
 
         if NaxRiscv.with_dma:
             self.dma_bus = dma_bus = axi.AXIInterface(data_width=64, address_width=32, id_width=4)
 
             self.cpu_params.update(
-                o_dma_bus_awready=dma_bus.aw.ready,
-                i_dma_bus_awvalid=dma_bus.aw.valid,
-                i_dma_bus_awid=dma_bus.aw.id,
-                i_dma_bus_awaddr=dma_bus.aw.addr,
-                i_dma_bus_awlen=dma_bus.aw.len,
-                i_dma_bus_awsize=dma_bus.aw.size,
-                i_dma_bus_awburst=dma_bus.aw.burst,
-                i_dma_bus_awlock=dma_bus.aw.lock,
-                i_dma_bus_awcache=dma_bus.aw.cache,
-                i_dma_bus_awprot=dma_bus.aw.prot,
-                i_dma_bus_awqos=dma_bus.aw.qos,
+                # DMA Bus.
+                # --------
+                # AW Channel.
+                o_dma_bus_awready = dma_bus.aw.ready,
+                i_dma_bus_awvalid = dma_bus.aw.valid,
+                i_dma_bus_awid    = dma_bus.aw.id,
+                i_dma_bus_awaddr  = dma_bus.aw.addr,
+                i_dma_bus_awlen   = dma_bus.aw.len,
+                i_dma_bus_awsize  = dma_bus.aw.size,
+                i_dma_bus_awburst = dma_bus.aw.burst,
+                i_dma_bus_awlock  = dma_bus.aw.lock,
+                i_dma_bus_awcache = dma_bus.aw.cache,
+                i_dma_bus_awprot  = dma_bus.aw.prot,
+                i_dma_bus_awqos   = dma_bus.aw.qos,
 
-                o_dma_bus_wready=dma_bus.w.ready,
-                i_dma_bus_wvalid=dma_bus.w.valid,
-                i_dma_bus_wdata=dma_bus.w.data,
-                i_dma_bus_wstrb=dma_bus.w.strb,
-                i_dma_bus_wlast=dma_bus.w.last,
+                # W Channel.
+                o_dma_bus_wready  = dma_bus.w.ready,
+                i_dma_bus_wvalid  = dma_bus.w.valid,
+                i_dma_bus_wdata   = dma_bus.w.data,
+                i_dma_bus_wstrb   = dma_bus.w.strb,
+                i_dma_bus_wlast   = dma_bus.w.last,
 
-                i_dma_bus_bready=dma_bus.b.ready,
-                o_dma_bus_bvalid=dma_bus.b.valid,
-                o_dma_bus_bid=dma_bus.b.id,
-                o_dma_bus_bresp=dma_bus.b.resp,
+                # B Channel.
+                i_dma_bus_bready  = dma_bus.b.ready,
+                o_dma_bus_bvalid  = dma_bus.b.valid,
+                o_dma_bus_bid     = dma_bus.b.id,
+                o_dma_bus_bresp   = dma_bus.b.resp,
 
-                o_dma_bus_arready=dma_bus.ar.ready,
-                i_dma_bus_arvalid=dma_bus.ar.valid,
-                i_dma_bus_arid=dma_bus.ar.id,
-                i_dma_bus_araddr=dma_bus.ar.addr,
-                i_dma_bus_arlen=dma_bus.ar.len,
-                i_dma_bus_arsize=dma_bus.ar.size,
-                i_dma_bus_arburst=dma_bus.ar.burst,
-                i_dma_bus_arlock=dma_bus.ar.lock,
-                i_dma_bus_arcache=dma_bus.ar.cache,
-                i_dma_bus_arprot=dma_bus.ar.prot,
-                i_dma_bus_arqos=dma_bus.ar.qos,
+                # AR Channel.
+                o_dma_bus_arready = dma_bus.ar.ready,
+                i_dma_bus_arvalid = dma_bus.ar.valid,
+                i_dma_bus_arid    = dma_bus.ar.id,
+                i_dma_bus_araddr  = dma_bus.ar.addr,
+                i_dma_bus_arlen   = dma_bus.ar.len,
+                i_dma_bus_arsize  = dma_bus.ar.size,
+                i_dma_bus_arburst = dma_bus.ar.burst,
+                i_dma_bus_arlock  = dma_bus.ar.lock,
+                i_dma_bus_arcache = dma_bus.ar.cache,
+                i_dma_bus_arprot  = dma_bus.ar.prot,
+                i_dma_bus_arqos   = dma_bus.ar.qos,
 
-                i_dma_bus_rready=dma_bus.r.ready,
-                o_dma_bus_rvalid=dma_bus.r.valid,
-                o_dma_bus_rid=dma_bus.r.id,
-                o_dma_bus_rdata=dma_bus.r.data,
-                o_dma_bus_rresp=dma_bus.r.resp,
-                o_dma_bus_rlast=dma_bus.r.last
+                # R Channel.
+                i_dma_bus_rready  = dma_bus.r.ready,
+                o_dma_bus_rvalid  = dma_bus.r.valid,
+                o_dma_bus_rid     = dma_bus.r.id,
+                o_dma_bus_rdata   = dma_bus.r.data,
+                o_dma_bus_rresp   = dma_bus.r.resp,
+                o_dma_bus_rlast   = dma_bus.r.last,
             )
 
     def set_reset_address(self, reset_address):
@@ -259,6 +276,8 @@ class NaxRiscv(CPU):
         md5_hash.update(str(NaxRiscv.litedram_width).encode('utf-8'))
         md5_hash.update(str(NaxRiscv.xlen).encode('utf-8'))
         md5_hash.update(str(NaxRiscv.cpu_count).encode('utf-8'))
+        md5_hash.update(str(NaxRiscv.l2_bytes).encode('utf-8'))
+        md5_hash.update(str(NaxRiscv.l2_ways).encode('utf-8'))
         md5_hash.update(str(NaxRiscv.jtag_tap).encode('utf-8'))
         md5_hash.update(str(NaxRiscv.jtag_instruction).encode('utf-8'))
         md5_hash.update(str(NaxRiscv.with_dma).encode('utf-8'))
@@ -279,16 +298,18 @@ class NaxRiscv(CPU):
         if not os.path.exists(dir):
             # Clone Repo.
             print(f"Cloning {name} Git repository...")
-            subprocess.check_call("git clone {url} {options}".format(
+            subprocess.check_call("git clone {url} {options} --recursive".format(
                 url     = repo,
                 options = dir
             ), shell=True)
             # Use specific SHA1 (Optional).
         print(f"Updating {name} Git repository...")
+        cwd = os.getcwd()
         os.chdir(os.path.join(dir))
         wipe_cmd = "&& git clean --force -d -x && git reset --hard" if "wipe" in NaxRiscv.update_repo else ""
         checkout_cmd = f"&& git checkout {hash}" if hash is not None else ""
         subprocess.check_call(f"cd {dir} {wipe_cmd} && git checkout {branch} && git submodule init && git pull --recurse-submodules {checkout_cmd}", shell=True)
+        os.chdir(cwd)
 
     # Netlist Generation.
     @staticmethod
@@ -298,8 +319,7 @@ class NaxRiscv(CPU):
         sdir = os.path.join(vdir, "ext", "SpinalHDL")
 
         if NaxRiscv.update_repo != "no":
-            NaxRiscv.git_setup("NaxRiscv", ndir, "https://github.com/SpinalHDL/NaxRiscv.git", "coherency", "ee4c6fb7" if NaxRiscv.update_repo=="recommended" else None)
-            NaxRiscv.git_setup("SpinalHDL", sdir, "https://github.com/SpinalHDL/SpinalHDL.git", "bus-fabric" , "ee95492a" if NaxRiscv.update_repo=="recommended" else None)
+            NaxRiscv.git_setup("NaxRiscv", ndir, "https://github.com/SpinalHDL/NaxRiscv.git", "main", "f3357383" if NaxRiscv.update_repo=="recommended" else None)
 
         gen_args = []
         gen_args.append(f"--netlist-name={NaxRiscv.netlist_name}")
@@ -307,6 +327,8 @@ class NaxRiscv(CPU):
         gen_args.append(f"--reset-vector={reset_address}")
         gen_args.append(f"--xlen={NaxRiscv.xlen}")
         gen_args.append(f"--cpu-count={NaxRiscv.cpu_count}")
+        gen_args.append(f"--l2-bytes={NaxRiscv.l2_bytes}")
+        gen_args.append(f"--l2-ways={NaxRiscv.l2_ways}")
         gen_args.append(f"--litedram-width={NaxRiscv.litedram_width}")
         for region in NaxRiscv.memory_regions:
             gen_args.append(f"--memory-region={region[0]},{region[1]},{region[2]},{region[3]}")
@@ -324,6 +346,8 @@ class NaxRiscv(CPU):
             gen_args.append(f"--scala-file={file}")
         if(NaxRiscv.with_fpu):
             gen_args.append(f"--scala-args=rvf=true,rvd=true")
+        if(NaxRiscv.with_rvc):
+            gen_args.append(f"--scala-args=rvc=true")
 
         cmd = f"""cd {ndir} && sbt "runMain naxriscv.platform.litex.NaxGen {" ".join(gen_args)}\""""
         print("NaxRiscv generation command :")
@@ -355,6 +379,9 @@ class NaxRiscv(CPU):
         platform.add_source(os.path.join(vdir,  self.netlist_name + ".v"), "verilog")
 
     def add_soc_components(self, soc):
+        # Set Human-name.
+        self.human_name = f"{self.human_name} {self.xlen}-bit"
+
         # Set UART/Timer0 CSRs to the ones used by OpenSBI.
         soc.csr.add("uart",   n=2)
         soc.csr.add("timer0", n=3)
@@ -445,6 +472,8 @@ class NaxRiscv(CPU):
 
         self.cpu_params.update(
             # Memory Bus (Master).
+            # --------------------
+            # AW Channel.
             o_mBus_awvalid   = mbus.aw.valid,
             i_mBus_awready   = mbus.aw.ready,
             o_mBus_awaddr    = mbus.aw.addr,
@@ -453,15 +482,18 @@ class NaxRiscv(CPU):
             o_mBus_awsize    = mbus.aw.size,
             o_mBus_awburst   = mbus.aw.burst,
             o_mBus_awallStrb = Open(),
+            # W Channel.
             o_mBus_wvalid    = mbus.w.valid,
             i_mBus_wready    = mbus.w.ready,
             o_mBus_wdata     = mbus.w.data,
             o_mBus_wstrb     = mbus.w.strb,
             o_mBus_wlast     = mbus.w.last,
+            # B Channel.
             i_mBus_bvalid    = mbus.b.valid,
             o_mBus_bready    = mbus.b.ready,
             i_mBus_bid       = mbus.b.id,
             i_mBus_bresp     = mbus.b.resp,
+            # AR Channel.
             o_mBus_arvalid   = mbus.ar.valid,
             i_mBus_arready   = mbus.ar.ready,
             o_mBus_araddr    = mbus.ar.addr,
@@ -469,6 +501,7 @@ class NaxRiscv(CPU):
             o_mBus_arlen     = mbus.ar.len,
             o_mBus_arsize    = mbus.ar.size,
             o_mBus_arburst   = mbus.ar.burst,
+            # R Channel.
             i_mBus_rvalid    = mbus.r.valid,
             o_mBus_rready    = mbus.r.ready,
             i_mBus_rdata     = mbus.r.data,
@@ -492,7 +525,7 @@ class NaxRiscv(CPU):
         for name, region in self.soc_bus.io_regions.items():
             NaxRiscv.memory_regions.append( (region.origin, region.size, "io", "p") ) # IO is only allowed on the p bus
         for name, region in self.soc_bus.regions.items():
-            if region.linker: # remove virtual regions
+            if region.linker: # Remove virtual regions.
                 continue
             if len(self.memory_buses) and name == 'main_ram': # m bus
                 bus = "m"
