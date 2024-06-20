@@ -218,7 +218,7 @@ def litex_setup_init_repos(config="standard", tag=None, dev_mode=False):
                 repo_url = repo_url.replace("https://github.com/", "git@github.com:")
             subprocess.check_call("git clone {url} {options}".format(
                 url     = repo_url + name + ".git",
-                options = "--recursive" if repo.clone == "recursive" else ""
+                options = "--recursive" if repo.clone == "recursive" else "--depth 1"
                 ), shell=True)
             os.chdir(os.path.join(current_path, name))
             # Use specific Branch.
@@ -481,4 +481,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
