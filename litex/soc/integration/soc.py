@@ -983,6 +983,8 @@ class SoC(LiteXModule, SoCCoreCompat):
         self.logger.info(self.irq)
         self.logger.info(colorer("-"*80, color="bright"))
 
+        # SoC Configs ------------------------------------------------------------------------------
+        self.add_config("PLATFORM_NAME", platform.name)
         self.add_config("CLOCK_FREQUENCY", int(sys_clk_freq))
 
     # SoC Helpers ----------------------------------------------------------------------------------
@@ -1285,6 +1287,7 @@ class SoC(LiteXModule, SoCCoreCompat):
         # Add constants.
         self.add_config(f"CPU_TYPE_{name}")
         self.add_config(f"CPU_VARIANT_{str(variant.split('+')[0])}")
+        self.add_config("CPU_FAMILY",     getattr(self.cpu, "family",     "Unknown"))
         self.add_config("CPU_NAME",       getattr(self.cpu, "name",       "Unknown"))
         self.add_config("CPU_HUMAN_NAME", getattr(self.cpu, "human_name", "Unknown"))
         if hasattr(self.cpu, "nop"):
@@ -1472,6 +1475,7 @@ class LiteXSoC(SoC):
         else:
             self.add_config("BIOS_NO_BUILD_TIME")
         self.add_module(name=name, module=Identifier(identifier))
+        self.add_config(name, identifier)
 
     # Add UART -------------------------------------------------------------------------------------
     def add_uart(self, name="uart", uart_name="serial", baudrate=115200, fifo_depth=16):
@@ -1563,7 +1567,7 @@ class LiteXSoC(SoC):
         if self.irq.enabled:
             self.irq.add(name, use_loc_if_exists=True)
         else:
-            self.add_constant("UART_POLLING")
+            self.add_constant("UART_POLLING", check_duplicate=False)
 
     # Add UARTbone ---------------------------------------------------------------------------------
     def add_uartbone(self, name="uartbone", uart_name="serial", clk_freq=None, baudrate=115200, cd="sys"):
@@ -1962,6 +1966,29 @@ class LiteXSoC(SoC):
             add_ip_address_constants(self,  "REMOTEIP", ethmac_remote_ip)
             add_mac_address_constants(self, "MACADDR",  ethmac_address)
 
+    # Add SPI Master --------------------------------------------------------------------------------
+    def add_spi_master(self, name="spimaster", pads=None, data_width=8, spi_clk_freq=1e6, with_clk_divider=True, **kwargs):
+        # Imports.
+        from litex.soc.cores.spi import SPIMaster
+
+        self.check_if_exists(f"{name}")
+
+        spi_clk_freq = int(spi_clk_freq)
+
+        if pads is None:
+            pads = self.platform.request(name)
+
+        spim = SPIMaster(pads, data_width, self.sys_clk_freq, spi_clk_freq, **kwargs)
+
+        if with_clk_divider:
+            spim.add_clk_divider()
+
+        self.add_module(name=f"{name}", module=spim)
+
+        self.add_constant(f"{name}_FREQUENCY",     spi_clk_freq)
+        self.add_constant(f"{name}_DATA_WIDTH",     data_width)
+        self.add_constant(f"{name}_MAX_CS",    len(pads.cs_n))
+
     # Add SPI Flash --------------------------------------------------------------------------------
     def add_spi_flash(self, name="spiflash", mode="4x", clk_freq=20e6, module=None, phy=None, rate="1:1", software_debug=False, **kwargs):
         # Imports.
@@ -2350,7 +2377,7 @@ class LiteXSoC(SoC):
         self.comb += vt.source.connect(phy if isinstance(phy, stream.Endpoint) else phy.sink)
 
     # Add Video Framebuffer ------------------------------------------------------------------------
-    def add_video_framebuffer(self, name="video_framebuffer", phy=None, timings="800x600@60Hz", clock_domain="sys", format="rgb888"):
+    def add_video_framebuffer(self, name="video_framebuffer", phy=None, timings="800x600@60Hz", clock_domain="sys", format="rgb888", fifo_depth=64*KILOBYTE):
         # Imports.
         from litex.soc.cores.video import VideoTimingGenerator, VideoFrameBuffer
 
@@ -2372,10 +2399,11 @@ class LiteXSoC(SoC):
         hres = int(timings.split("@")[0].split("x")[0])
         vres = int(timings.split("@")[0].split("x")[1])
         vfb = VideoFrameBuffer(self.sdram.crossbar.get_port(),
-            hres   = hres,
-            vres   = vres,
-            base   = base,
-            format = format,
+            hres                  = hres,
+            vres                  = vres,
+            base                  = base,
+            fifo_depth            = fifo_depth,
+            format                = format,
             clock_domain          = clock_domain,
             clock_faster_than_sys = vtg.video_timings["pix_clk"] >= self.sys_clk_freq,
         )
