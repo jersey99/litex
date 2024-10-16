@@ -27,6 +27,7 @@ from litex.build.generic_toolchain import GenericToolchain
 
 from litex.build.efinix import common
 from litex.build.efinix import InterfaceWriter
+from litex.build.efinix import IPMWriter
 
 
 # Efinity Toolchain --------------------------------------------------------------------------------
@@ -40,6 +41,7 @@ class EfinityToolchain(GenericToolchain):
         self.efinity_path              = efinity_path
         os.environ["EFXPT_HOME"]       = self.efinity_path + "/pt"
         self.ifacewriter               = InterfaceWriter(efinity_path)
+        self.ipmwriter                 = IPMWriter(efinity_path)
         self.excluded_ios              = []
         self.additional_sdc_commands   = []
         self.additional_iface_commands = []
@@ -50,7 +52,23 @@ class EfinityToolchain(GenericToolchain):
         if self.platform.verilog_include_paths:
             self.options["includ_path"] = "{" + ";".join(self.platform.verilog_include_paths) + "}"
 
-    def build(self, platform, fragment, **kwargs):
+    def build(self, platform, fragment,
+        synth_mode               = "speed",
+        infer_clk_enable         = "3",
+        bram_output_regs_packing = "1",
+        retiming                 = "1",
+        seq_opt                  = "1",
+        mult_input_regs_packing  = "1",
+        mult_output_regs_packing = "1",
+        **kwargs):
+
+        self._synth_mode               = synth_mode
+        self._infer_clk_enable         = infer_clk_enable
+        self._bram_output_regs_packing = bram_output_regs_packing
+        self._retiming                 = retiming
+        self._seq_opt                  = seq_opt
+        self._mult_input_regs_packing  = mult_input_regs_packing
+        self._mult_output_regs_packing = mult_output_regs_packing
 
         # Apply FullMemoryWE on Design (Efiniy does not infer memories correctly otherwise).
         FullMemoryWE()(fragment)
@@ -148,6 +166,10 @@ class EfinityToolchain(GenericToolchain):
                 prop = "PULL_OPTION"
                 val = c.misc
 
+            if c.misc == "SCHMITT_TRIGGER":
+                prop = "SCHMITT_TRIGGER"
+                val = "1"
+
             if "DRIVE_STRENGTH" in c.misc:
                 prop = "DRIVE_STRENGTH"
                 val = c.misc.split("=")[1]
@@ -202,17 +224,42 @@ class EfinityToolchain(GenericToolchain):
 
         return "\n".join(conf)
 
+    def resolve_iface_signal_names(self):
+        # Iterate over each block
+        for block in self.platform.toolchain.ifacewriter.blocks:
+
+            # Iterate over each key-value pair in the block
+            for key, value in block.items():
+
+                # Only process specific keys, skip others.
+                if key not in ["name", "in_clk_pin", "out_clk_pin"]:
+                    continue
+
+                # If the value is a ClockSignal, resolve its name
+                if isinstance(value, ClockSignal):
+                    clock_domain = value.cd
+                    signal_name = self._vns.get_name(self._vns.clock_domains[clock_domain].clk)
+                    block[key] = signal_name  # Replace with the resolved name
+
+                # If the value is a Signal, directly resolve its name
+                elif isinstance(value, Signal):
+                    signal_name = self._vns.get_name(value)
+                    block[key] = signal_name  # Replace with the resolved name
+
     def build_io_constraints(self):
         pythonpath = ""
 
+        self.resolve_iface_signal_names()
+
         header = self.ifacewriter.header(self._build_name, self.platform.device)
+        iobank = self.ifacewriter.iobank_info(self.platform.iobank_info)
         gen    = self.ifacewriter.generate(self.platform.device)
         #TODO  : move this to ifacewriter
         gpio   = self._build_iface_gpio()
         add    = "\n".join(self.additional_iface_commands)
         footer = self.ifacewriter.footer()
 
-        tools.write_to_file("iface.py", header + gen + gpio + add + footer)
+        tools.write_to_file("iface.py", header + iobank + gen + gpio + add + footer)
 
     # Project configuration (.xml) -----------------------------------------------------------------
 
@@ -251,7 +298,7 @@ class EfinityToolchain(GenericToolchain):
 
         # Add Timing Constraints.
         constraint_info  = et.SubElement(root, "efx:constraint_info")
-        et.SubElement(constraint_info, "efx:sdc_file", name=f"{self._build_name}.sdc")
+        et.SubElement(constraint_info, "efx:sdc_file", name=f"{self._build_name}_merged.sdc")
 
         # Add Misc Info.
         misc_info  = et.SubElement(root, "efx:misc_info")
@@ -265,16 +312,24 @@ class EfinityToolchain(GenericToolchain):
         xml_str = xml_str.toprettyxml(indent="  ")
         tools.write_to_file("{}.xml".format(self._build_name), xml_str)
 
+        if len(self.ipmwriter.blocks) > 0:
+            ipm_header = self.ipmwriter.header(self._build_name, self.platform.device, self.platform.family)
+            ipm    = self.ipmwriter.generate(self.platform.device)
+
+            tools.write_to_file("ipm.py", ipm_header + ipm )
+
+            if tools.subprocess_call_filtered([self.efinity_path + "/bin/python3", "ipm.py"], common.colors) != 0:
+                raise OSError("Error occurred during Efinity ip script execution.")
+
         if tools.subprocess_call_filtered([self.efinity_path + "/bin/python3", "iface.py"], common.colors) != 0:
             raise OSError("Error occurred during Efinity peri script execution.")
 
         # Some IO blocks don't have Python API so we need to configure them
         # directly in the peri.xml file
-        # We also need to configure the bank voltage here
-        if self.ifacewriter.xml_blocks or self.platform.iobank_info:
+        if self.ifacewriter.xml_blocks:
             self.ifacewriter.generate_xml_blocks()
 
-        # Because the Python API is sometimes bugged, we need to tweak the generated xml
+        # Because the Python API is sometimes bugged, we need to tweak the generated xml
         if self.ifacewriter.fix_xml:
             self.ifacewriter.fix_xml_values()
 
@@ -286,36 +341,6 @@ class EfinityToolchain(GenericToolchain):
         return "" # not used
 
     def run_script(self, script):
-        # Synthesis/Mapping.
-        r = tools.subprocess_call_filtered([self.efinity_path + "/bin/efx_map",
-            "--project",                    f"{self._build_name}",
-            "--root",                       f"{self._build_name}",
-            "--write-efx-verilog",          f"outflow/{self._build_name}.map.v",
-            "--write-premap-module",        f"outflow/{self._build_name}.elab.vdb",
-            "--binary-db",                  f"{self._build_name}.vdb",
-            "--family",                     self.platform.family,
-            "--device",                     self.platform.device,
-            "--mode",                       "speed",
-            "--max_ram",                    "-1",
-            "--max_mult",                   "-1",
-            "--infer-clk-enable",           "3",
-            "--infer-sync-set-reset",       "1",
-            "--fanout-limit",               "0",
-            "--bram_output_regs_packing",   "1",
-            "--retiming",                   "1",
-            "--seq_opt",                    "1",
-            "--blast_const_operand_adders", "1",
-            "--mult_input_regs_packing",    "1",
-            "--mult_output_regs_packing",   "1",
-            "--veri_option",                "verilog_mode=verilog_2k,vhdl_mode=vhdl_2008",
-            "--work-dir",                   "work_syn",
-            "--output-dir",                 "outflow",
-            "--project-xml",                f"{self._build_name}.xml",
-            "--I",                          "./"
-        ], common.colors)
-        if r != 0:
-            raise OSError("Error occurred during efx_map execution.")
-
         # Place and Route.
         r = tools.subprocess_call_filtered([self.efinity_path + "/bin/python3",
             self.efinity_path + "/scripts/efx_run_pt.py",
@@ -325,6 +350,48 @@ class EfinityToolchain(GenericToolchain):
         ], common.colors)
         if r != 0:
            raise OSError("Error occurred during efx_run_pt execution.")
+
+        # Merge SDC
+        with open(f"{self._build_name}_merged.sdc", 'w') as outfile:
+            with open(f"outflow/{self._build_name}.pt.sdc") as infile:
+                outfile.write(infile.read())
+            outfile.write("\n")
+            outfile.write("#########################\n")
+            outfile.write("\n")
+            with open(f"{self._build_name}.sdc") as infile:
+                outfile.write(infile.read())
+
+        # Synthesis/Mapping.
+        r = tools.subprocess_call_filtered([self.efinity_path + "/bin/efx_map",
+            "--project",                    f"{self._build_name}",
+            "--root",                       f"{self._build_name}",
+            "--write-efx-verilog",          f"outflow/{self._build_name}.map.v",
+            "--write-premap-module",        f"outflow/{self._build_name}.elab.vdb",
+            "--binary-db",                  f"{self._build_name}.vdb",
+            "--family",                     self.platform.family,
+            "--device",                     self.platform.device,
+            "--mode",                       self._synth_mode,
+            "--max_ram",                    "-1",
+            "--max_mult",                   "-1",
+            "--infer-clk-enable",           self._infer_clk_enable,
+            "--infer-sync-set-reset",       "1",
+            "--fanout-limit",               "0",
+            "--bram_output_regs_packing",   self._bram_output_regs_packing,
+            "--retiming",                   self._retiming,
+            "--seq_opt",                    self._seq_opt,
+            "--blast_const_operand_adders", "1",
+            "--mult_input_regs_packing",    self._mult_input_regs_packing,
+            "--mult_output_regs_packing",   self._mult_output_regs_packing,
+            "--veri_option",                "verilog_mode=verilog_2k,vhdl_mode=vhdl_2008",
+            "--work-dir",                   "work_syn",
+            "--output-dir",                 "outflow",
+            "--project-xml",                f"{self._build_name}.xml",
+            "--I",                          "./"
+        ], common.colors)
+        if r != 0:
+            raise OSError("Error occurred during efx_map execution.")
+
+
 
         r = tools.subprocess_call_filtered([self.efinity_path + "/bin/efx_pnr",
             "--circuit",              f"{self._build_name}",
@@ -338,7 +405,7 @@ class EfinityToolchain(GenericToolchain):
             "--use_vdb_file",         "on",
             "--place_file",           f"outflow/{self._build_name}.place",
             "--route_file",           f"outflow/{self._build_name}.route",
-            "--sdc_file",             f"{self._build_name}.sdc",
+            "--sdc_file",             f"{self._build_name}_merged.sdc",
             "--sync_file",            f"outflow/{self._build_name}.interface.csv",
             "--seed",                 "1",
             "--work_dir",             "work_pnr",
@@ -377,3 +444,25 @@ class EfinityToolchain(GenericToolchain):
         ], common.colors)
         if r != 0:
            raise OSError("Error occurred during export_bitstream execution.")
+
+def build_args(parser):
+    toolchain = parser.add_argument_group(title="Efinity toolchain options")
+    toolchain.add_argument("--synth-mode",               default="speed", help="Synthesis optimization mode.",                  choices=["speed", "area", "area2"])
+    toolchain.add_argument("--infer-clk-enable",         default="3",     help="infers the flip-flop clock enable signal.",     choices=["0", "1", "2", "3", "4",])
+    toolchain.add_argument("--infer-sync-set-reset",     default="1",     help="Infer synchronous set/reset signals.",          choices=["0", "1"])
+    toolchain.add_argument("--bram-output-regs-packing", default="1",     help="Pack registers into the output of BRAM.",       choices=["0", "1"])
+    toolchain.add_argument("--retiming",                 default="1",     help="Perform retiming optimization.",                choices=["0", "1", "2"])
+    toolchain.add_argument("--seq-opt",                  default="1",     help="Turn on sequential optimization.",              choices=["0", "1"])
+    toolchain.add_argument("--mult-input-regs-packing",  default="1",     help="Allow packing of multiplier input registers.",  choices=["0", "1"]),
+    toolchain.add_argument("--mult-output-regs-packing", default="1",     help="Allow packing of multiplier output registers.", choices=["0", "1"])
+
+def build_argdict(args):
+    return {
+        "synth_mode"               : args.synth_mode,
+        "infer_clk_enable"         : args.infer_clk_enable,
+        "bram_output_regs_packing" : args.bram_output_regs_packing,
+        "retiming"                 : args.retiming,
+        "seq_opt"                  : args.seq_opt,
+        "mult_input_regs_packing"  : args.mult_input_regs_packing,
+        "mult_output_regs_packing" : args.mult_output_regs_packing,
+    }

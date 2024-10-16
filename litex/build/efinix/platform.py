@@ -31,6 +31,7 @@ class EfinixPlatform(GenericPlatform):
         self.iobank_info  = iobank_info
         self.spi_mode     = spi_mode
         self.spi_width    = spi_width
+        self.clks         = {}
         if self.device[:2] == "Ti":
             self.family = "Titanium"
         else:
@@ -90,6 +91,15 @@ class EfinixPlatform(GenericPlatform):
                     return [pins[idx]]
         return None
 
+    def get_pins_location(self, sig):
+        if sig is None:
+            return None
+        sc = self.constraint_manager.get_sig_constraints()
+        for s, pins, others, resource in sc:
+            if (s == sig) and (pins[0] != 'X'):
+                    return pins
+        return None
+
     def get_pin_properties(self, sig):
         ret = []
         if sig is None:
@@ -108,6 +118,10 @@ class EfinixPlatform(GenericPlatform):
                             if o.misc in ["WEAK_PULLUP", "WEAK_PULLDOWN"]:
                                 prop = "PULL_OPTION"
                                 val = o.misc
+                                ret.append((prop, val))
+                            if o.misc == "SCHMITT_TRIGGER":
+                                prop = "SCHMITT_TRIGGER"
+                                val = "1"
                                 ret.append((prop, val))
                             if "DRIVE_STRENGTH" in o.misc:
                                 prop = "DRIVE_STRENGTH"
@@ -142,6 +156,18 @@ class EfinixPlatform(GenericPlatform):
                 if resource[2]:
                     name = name + "_" + resource[2]
                 name = name + (f"{idx}" if slc else "")
+                return name
+        return None
+
+    def get_pins_name(self, sig):
+        if sig is None:
+            return None
+        sc = self.constraint_manager.get_sig_constraints()
+        for s, pins, others, resource in sc:
+            if s == sig:
+                name = resource[0] + (f"{resource[1]}" if resource[1] is not None else "")
+                if resource[2]:
+                    name = name + "_" + resource[2]
                 return name
         return None
 
@@ -185,3 +211,34 @@ class EfinixPlatform(GenericPlatform):
         pll = self.pll_available[0]
         self.get_pll_resource(pll)
         return pll
+
+    @classmethod
+    def fill_args(cls, toolchain, parser):
+        """
+        pass parser to the specific toolchain to
+        fill this with toolchain args
+
+        Parameters
+        ==========
+        toolchain: str
+            toolchain name
+        parser: argparse.ArgumentParser
+            parser to be filled
+        """
+        efinity.build_args(parser)
+
+    @classmethod
+    def get_argdict(cls, toolchain, args):
+        """
+        return a dict of args
+
+        Parameters
+        ==========
+        toolchain: str
+            toolchain name
+
+        Return
+        ======
+        a dict of key/value for each args or an empty dict
+        """
+        return efinity.build_argdict(args)

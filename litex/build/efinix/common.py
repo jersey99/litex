@@ -5,13 +5,13 @@
 # Copyright (c) 2015-2018 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
-from migen.fhdl.module import Module
 from migen.genlib.resetsync import AsyncResetSynchronizer
 
+from litex.gen import *
 from litex.build.io import *
 
 from litex.build.generic_platform import Pins
-from litex.build.efinix.efinity import EfinityToolchain
+from litex.build.efinix.efinity   import EfinityToolchain
 
 # Colorama -----------------------------------------------------------------------------------------
 
@@ -33,9 +33,14 @@ if _have_colorama:
          r"\g<0>" + colorama.Style.RESET_ALL),
     ]
 
+# Helpers ------------------------------------------------------------------------------------------
+
+def assert_is_signal_or_clocksignal(obj):
+    assert isinstance(obj, (ClockSignal, Signal)), f"Object {obj} is not a ClockSignal or Signal"
+
 # Efinix AsyncResetSynchronizer --------------------------------------------------------------------
 
-class EfinixAsyncResetSynchronizerImpl(Module):
+class EfinixAsyncResetSynchronizerImpl(LiteXModule):
     def __init__(self, cd, async_reset):
         rst1 = Signal()
         self.specials += [
@@ -65,118 +70,122 @@ class EfinixAsyncResetSynchronizer:
 
 # Efinix Clk Input ---------------------------------------------------------------------------------
 
-class EfinixClkInputImpl(Module):
-    def __init__(self, platform, i, o):
-        o_clk  = platform.add_iface_io(o) # FIXME.
+class EfinixClkInputImpl(LiteXModule):
+    n = 0
+    def __init__(self, i, o):
+        platform = LiteXContext.platform
+        self.name = f"clk_input{self.n}"
+        if isinstance(o, Signal):
+            clk_out_name = f"{o.name_override}{self.name}_clk"
+            platform.add_extension([(clk_out_name, 0, Pins(1))])
+            platform.toolchain.excluded_ios.append(clk_out_name)
+            clk_out                        = platform.request(clk_out_name)
+            platform.clks[o.name_override] = clk_out_name
+        else:
+            clk_out      = platform.add_iface_io(o) # FIXME.
+            clk_out_name = platform.get_pin_name(clk_out)
+
         block = {
             "type"       : "GPIO",
             "size"       : 1,
             "location"   : platform.get_pin_location(i)[0],
             "properties" : platform.get_pin_properties(i),
-            "name"       : platform.get_pin_name(o_clk),
+            "name"       : clk_out_name,
             "mode"       : "INPUT_CLK",
         }
         platform.toolchain.ifacewriter.blocks.append(block)
         platform.toolchain.excluded_ios.append(i)
 
+        if isinstance(o, Signal):
+            self.comb += o.eq(clk_out)
+            o = clk_out
+        EfinixClkInputImpl.n += 1 # FIXME: Improve.
 
-class EfinixClkInput(Module):
+class EfinixClkInput(LiteXModule):
     @staticmethod
     def lower(dr):
-        return EfinixClkInputImpl(dr.platform, dr.i, dr.o)
+        return EfinixClkInputImpl(dr.i, dr.o)
 
-# Efinix Clk Output ---------------------------------------------------------------------------------
+# Efinix Clk Output --------------------------------------------------------------------------------
 
-class EfinixClkOutputImpl(Module):
-    def __init__(self, platform, i, o):
+class EfinixClkOutputImpl(LiteXModule):
+    def __init__(self, i, o):
+        assert_is_signal_or_clocksignal(i)
+        platform = LiteXContext.platform
         block = {
             "type"       : "GPIO",
             "size"       : 1,
             "location"   : platform.get_pin_location(o)[0],
             "properties" : platform.get_pin_properties(o),
-            "name"       : i, # FIXME.
+            "name"       : i,
             "mode"       : "OUTPUT_CLK",
         }
         platform.toolchain.ifacewriter.blocks.append(block)
         platform.toolchain.excluded_ios.append(o)
 
-
-class EfinixClkOutput(Module):
+class EfinixClkOutput(LiteXModule):
     @staticmethod
     def lower(dr):
-        return EfinixClkOutputImpl(dr.platform, dr.i, dr.o)
+        return EfinixClkOutputImpl(dr.i, dr.o)
 
 # Efinix Tristate ----------------------------------------------------------------------------------
 
-class EfinixTristateImpl(Module):
-    def __init__(self, platform, io, o, oe, i=None):
-        nbits, sign = value_bits_sign(io)
-
-        for bit in range(nbits):
-            io_name = platform.get_pin_name(io[bit])
-            io_loc  = platform.get_pin_location(io[bit])
-            io_prop = platform.get_pin_properties(io[bit])
-            io_o    = platform.add_iface_io(io_name + "_OUT")
-            io_oe   = platform.add_iface_io(io_name +  "_OE")
-            io_i    = platform.add_iface_io(io_name +  "_IN")
-            self.comb += io_o.eq(o >> bit)
-            self.comb += io_oe.eq(oe)
-            if i is not None:
-                self.comb += i[bit].eq(io_i)
-            block = {
-                "type"       : "GPIO",
-                "mode"       : "INOUT",
-                "name"       : io_name,
-                "location"   : [io_loc[0]],
-                "properties" : io_prop
-            }
-
-            platform.toolchain.ifacewriter.blocks.append(block)
+class EfinixTristateImpl(LiteXModule):
+    def __init__(self, io, o, oe, i=None):
+        platform = LiteXContext.platform
+        if len(io) == 1:
+            io_name = platform.get_pin_name(io)
+            io_pad  = platform.get_pin_location(io)
+            io_prop = platform.get_pin_properties(io)
+        else:
+            io_name = platform.get_pins_name(io)
+            io_pad  = platform.get_pins_location(io)
+            io_prop = platform.get_pin_properties(io[0])
+        io_prop_dict = dict(io_prop)
+        io_data_i    = platform.add_iface_io(io_name + "_OUT", len(io))
+        io_data_o    = platform.add_iface_io(io_name + "_IN", len(io))
+        io_data_e    = platform.add_iface_io(io_name + "_OE", len(io))
+        self.comb += io_data_i.eq(o)
+        self.comb += io_data_e.eq(oe)
+        if i is not None:
+            self.comb += i.eq(io_data_o)
+        block = {
+            "type"           : "GPIO",
+            "mode"           : "INOUT",
+            "name"           : io_name,
+            "location"       : io_pad,
+            "properties"     : io_prop,
+            "size"           : len(io),
+            "drive_strength" : io_prop_dict.get("DRIVE_STRENGTH", "4")
+        }
+        platform.toolchain.ifacewriter.blocks.append(block)
         platform.toolchain.excluded_ios.append(platform.get_pin(io))
 
-class EfinixTristate(Module):
+class EfinixTristate(LiteXModule):
     @staticmethod
     def lower(dr):
-        return EfinixTristateImpl(dr.platform, dr.target, dr.o, dr.oe, dr.i)
-
-# Efinix SDRTristate -------------------------------------------------------------------------------
-
-class EfinixSDRTristateImpl(Module):
-    def __init__(self, platform, io, o, oe, i, clk):
-        _o  = Signal()
-        _oe = Signal()
-        _i  = Signal()
-        self.specials += SDROutput(o, _o, clk)
-        self.specials += SDRInput(_i, i, clk)
-        self.submodules += InferedSDRIO(oe, _oe, clk)
-        tristate = Tristate(io, _o, _oe, _i)
-        tristate.platform = platform
-        self.specials += tristate
-
-class EfinixSDRTristate(Module):
-    @staticmethod
-    def lower(dr):
-        return EfinixSDRTristateImpl(dr.platform, dr.io, dr.o, dr.oe, dr.i, dr.clk)
+        return EfinixTristateImpl(dr.target, dr.o, dr.oe, dr.i)
 
 # Efinix DifferentialOutput ------------------------------------------------------------------------
 
-class EfinixDifferentialOutputImpl(Module):
-    def __init__(self, platform, i, o_p, o_n):
-        # only keep _p
+class EfinixDifferentialOutputImpl(LiteXModule):
+    def __init__(self, i, o_p, o_n):
+        platform = LiteXContext.platform
+        # only keep _p
         io_name = platform.get_pin_name(o_p)
         io_pad  = platform.get_pad_name(o_p) # need real pad name
         io_prop = platform.get_pin_properties(o_p)
 
         if platform.family == "Titanium":
             # _p has _P_ and _n has _N_ followed by an optional function
-            # lvds block needs _PN_
+            # lvds block needs _PN_
             pad_split = io_pad.split('_')
             assert pad_split[1] == 'P'
             io_pad = f"{pad_split[0]}_PN_{pad_split[2]}"
         else:
             assert "TXP" in io_pad
             # diff output pins are TXPYY and TXNYY
-            # lvds block needs TXYY
+            # lvds block needs TXYY
             io_pad = io_pad.replace("TXP", "TX")
 
         platform.add_extension([(io_name, 0, Pins(1))])
@@ -184,13 +193,13 @@ class EfinixDifferentialOutputImpl(Module):
 
         self.comb += i_data.eq(i)
         block = {
-            "type"              : "LVDS",
-            "mode"              : "OUTPUT",
-            "tx_mode"           : "DATA",
-            "name"              : io_name,
-            "sig"               : i_data,
-            "location"          : io_pad,
-            "size"              : 1,
+            "type"     : "LVDS",
+            "mode"     : "OUTPUT",
+            "tx_mode"  : "DATA",
+            "name"     : io_name,
+            "sig"      : i_data,
+            "location" : io_pad,
+            "size"     : 1,
         }
         platform.toolchain.ifacewriter.blocks.append(block)
         platform.toolchain.excluded_ios.append(platform.get_pin(o_p))
@@ -200,27 +209,28 @@ class EfinixDifferentialOutputImpl(Module):
 class EfinixDifferentialOutput:
     @staticmethod
     def lower(dr):
-        return EfinixDifferentialOutputImpl(dr.platform, dr.i, dr.o_p, dr.o_n)
+        return EfinixDifferentialOutputImpl(dr.i, dr.o_p, dr.o_n)
 
 # Efinix DifferentialInput -------------------------------------------------------------------------
 
-class EfinixDifferentialInputImpl(Module):
-    def __init__(self, platform, i_p, i_n, o):
-        # only keep _p
+class EfinixDifferentialInputImpl(LiteXModule):
+    def __init__(self, i_p, i_n, o):
+        platform = LiteXContext.platform
+        # only keep _p
         io_name = platform.get_pin_name(i_p)
         io_pad  = platform.get_pad_name(i_p) # need real pad name
         io_prop = platform.get_pin_properties(i_p)
 
         if platform.family == "Titanium":
             # _p has _P_ and _n has _N_ followed by an optional function
-            # lvds block needs _PN_
+            # lvds block needs _PN_
             pad_split = io_pad.split('_')
             assert pad_split[1] == 'P'
             io_pad = f"{pad_split[0]}_PN_{pad_split[2]}"
         else:
             assert "RXP" in io_pad
             # diff input pins are RXPYY and RXNYY
-            # lvds block needs RXYY
+            # lvds block needs RXYY
             io_pad = io_pad.replace("RXP", "RX")
 
         platform.add_extension([
@@ -259,17 +269,139 @@ class EfinixDifferentialInputImpl(Module):
 class EfinixDifferentialInput:
     @staticmethod
     def lower(dr):
-        return EfinixDifferentialInputImpl(dr.platform, dr.i_p, dr.i_n, dr.o)
+        return EfinixDifferentialInputImpl(dr.i_p, dr.i_n, dr.o)
+
+# Efinix DDRTristate -------------------------------------------------------------------------------
+
+class EfinixDDRTristateImpl(LiteXModule):
+    def __init__(self, io, o1, o2, oe1, oe2, i1, i2, clk):
+        assert oe1 == oe2
+        assert_is_signal_or_clocksignal(clk)
+        platform     = LiteXContext.platform
+        io_name      = platform.get_pin_name(io)
+        io_pad       = platform.get_pin_location(io)
+        io_prop      = platform.get_pin_properties(io)
+        io_prop_dict = dict(io_prop)
+        io_data_i_h  = platform.add_iface_io(io_name + "_OUT_HI")
+        io_data_i_l  = platform.add_iface_io(io_name + "_OUT_LO")
+        io_data_o_h  = platform.add_iface_io(io_name + "_IN_HI")
+        io_data_o_l  = platform.add_iface_io(io_name + "_IN_LO")
+        io_data_e    = platform.add_iface_io(io_name + "_OE")
+        self.comb += io_data_i_h.eq(o1)
+        self.comb += io_data_i_l.eq(o2)
+        self.comb += io_data_e.eq(oe1)
+        self.comb += i1.eq(io_data_o_h)
+        self.comb += i2.eq(io_data_o_l)
+        block = {
+            "type"           : "GPIO",
+            "mode"           : "INOUT",
+            "name"           : io_name,
+            "location"       : io_pad,
+            "properties"     : io_prop,
+            "size"           : 1,
+            "in_reg"         : "DDIO_RESYNC",
+            "in_clk_pin"     : clk,
+            "out_reg"        : "DDIO_RESYNC",
+            "out_clk_pin"    : clk,
+            "oe_reg"         : "REG",
+            "in_clk_inv"     : 0,
+            "out_clk_inv"    : 0,
+            "drive_strength" : io_prop_dict.get("DRIVE_STRENGTH", "4")
+        }
+        platform.toolchain.ifacewriter.blocks.append(block)
+        platform.toolchain.excluded_ios.append(platform.get_pin(io))
+
+class EfinixDDRTristate:
+    @staticmethod
+    def lower(dr):
+        return EfinixDDRTristateImpl(dr.io, dr.o1, dr.o2, dr.oe1, dr.oe2, dr.i1, dr.i2, dr.clk)
+
+# Efinix SDRTristate -------------------------------------------------------------------------------
+
+class EfinixSDRTristateImpl(LiteXModule):
+    def __init__(self, io, o, oe, i, clk):
+        assert_is_signal_or_clocksignal(clk)
+        platform     = LiteXContext.platform
+        io_name      = platform.get_pin_name(io)
+        io_pad       = platform.get_pin_location(io)
+        io_prop      = platform.get_pin_properties(io)
+        io_prop_dict = dict(io_prop)
+        io_data_i    = platform.add_iface_io(io_name + "_OUT")
+        io_data_o    = platform.add_iface_io(io_name + "_IN")
+        io_data_e    = platform.add_iface_io(io_name + "_OE")
+        self.comb += io_data_i.eq(o)
+        self.comb += io_data_e.eq(oe)
+        self.comb += i.eq(io_data_o)
+        block = {
+            "type"           : "GPIO",
+            "mode"           : "INOUT",
+            "name"           : io_name,
+            "location"       : io_pad,
+            "properties"     : io_prop,
+            "size"           : 1,
+            "in_reg"         : "REG",
+            "in_clk_pin"     : clk,
+            "out_reg"        : "REG",
+            "out_clk_pin"    : clk,
+            "oe_reg"         : "REG",
+            "in_clk_inv"     : 0,
+            "out_clk_inv"    : 0,
+            "drive_strength" : io_prop_dict.get("DRIVE_STRENGTH", "4")
+        }
+        platform.toolchain.ifacewriter.blocks.append(block)
+        platform.toolchain.excluded_ios.append(platform.get_pin(io))
+
+
+class EfinixSDRTristate(LiteXModule):
+    @staticmethod
+    def lower(dr):
+        return EfinixSDRTristateImpl(dr.io, dr.o, dr.oe, dr.i, dr.clk)
+
+# Efinix SDROutput ---------------------------------------------------------------------------------
+
+class EfinixSDROutputImpl(LiteXModule):
+    def __init__(self, i, o, clk):
+        assert_is_signal_or_clocksignal(clk)
+        platform     = LiteXContext.platform
+        io_name      = platform.get_pin_name(o)
+        io_pad       = platform.get_pin_location(o)
+        io_prop      = platform.get_pin_properties(o)
+        io_prop_dict = dict(io_prop)
+        io_data_i    = platform.add_iface_io(io_name)
+        self.comb += io_data_i.eq(i)
+        block = {
+            "type"           : "GPIO",
+            "mode"           : "OUTPUT",
+            "name"           : io_name,
+            "location"       : io_pad,
+            "properties"     : io_prop,
+            "size"           : 1,
+            "out_reg"        : "REG",
+            "out_clk_pin"    : clk,
+            "out_clk_inv"    : 0,
+            "drive_strength" : io_prop_dict.get("DRIVE_STRENGTH", "4")
+        }
+        platform.toolchain.ifacewriter.blocks.append(block)
+        platform.toolchain.excluded_ios.append(platform.get_pin(o))
+
+
+class EfinixSDROutput(LiteXModule):
+    @staticmethod
+    def lower(dr):
+        return EfinixSDROutputImpl(dr.i, dr.o, dr.clk)
 
 # Efinix DDROutput ---------------------------------------------------------------------------------
 
-class EfinixDDROutputImpl(Module):
-    def __init__(self, platform, i1, i2, o, clk):
-        io_name = platform.get_pin_name(o)
-        io_pad  = platform.get_pin_location(o)
-        io_prop = platform.get_pin_properties(o)
-        io_data_h  = platform.add_iface_io(io_name + "_HI")
-        io_data_l  = platform.add_iface_io(io_name + "_LO")
+class EfinixDDROutputImpl(LiteXModule):
+    def __init__(self, i1, i2, o, clk):
+        assert_is_signal_or_clocksignal(clk)
+        platform     = LiteXContext.platform
+        io_name      = platform.get_pin_name(o)
+        io_pad       = platform.get_pin_location(o)
+        io_prop      = platform.get_pin_properties(o)
+        io_prop_dict = dict(io_prop)
+        io_data_h    = platform.add_iface_io(io_name + "_HI")
+        io_data_l    = platform.add_iface_io(io_name + "_LO")
         self.comb += io_data_h.eq(i1)
         self.comb += io_data_l.eq(i2)
         block = {
@@ -280,9 +412,9 @@ class EfinixDDROutputImpl(Module):
             "properties"        : io_prop,
             "size"              : 1,
             "out_reg"           : "DDIO_RESYNC",
-            "out_clk_pin"       : clk, # FIXME.
-            "is_inclk_inverted" : False,
-            "drive_strength"    : 4 # FIXME: Get it from constraints.
+            "out_clk_pin"       : clk,
+            "out_clk_inv"       : 0,
+            "drive_strength"    : io_prop_dict.get("DRIVE_STRENGTH", "4")
         }
         platform.toolchain.ifacewriter.blocks.append(block)
         platform.toolchain.excluded_ios.append(platform.get_pin(o))
@@ -290,12 +422,44 @@ class EfinixDDROutputImpl(Module):
 class EfinixDDROutput:
     @staticmethod
     def lower(dr):
-        return EfinixDDROutputImpl(dr.platform, dr.i1, dr.i2, dr.o, dr.clk)
+        return EfinixDDROutputImpl(dr.i1, dr.i2, dr.o, dr.clk)
+
+# Efinix SDRInput ----------------------------------------------------------------------------------
+
+class EfinixSDRInputImpl(LiteXModule):
+    def __init__(self, i, o, clk):
+        assert_is_signal_or_clocksignal(clk)
+        platform = LiteXContext.platform
+        io_name  = platform.get_pin_name(i)
+        io_pad   = platform.get_pin_location(i)
+        io_prop  = platform.get_pin_properties(i)
+        io_data  = platform.add_iface_io(io_name)
+        self.comb += o.eq(io_data)
+        block = {
+            "type"              : "GPIO",
+            "mode"              : "INPUT",
+            "name"              : io_name,
+            "location"          : io_pad,
+            "properties"        : io_prop,
+            "size"              : 1,
+            "in_reg"            : "REG",
+            "in_clk_pin"        : clk,
+            "in_clk_inv"        : 0
+        }
+        platform.toolchain.ifacewriter.blocks.append(block)
+        platform.toolchain.excluded_ios.append(platform.get_pin(i))
+
+class EfinixSDRInput:
+    @staticmethod
+    def lower(dr):
+        return EfinixSDRInputImpl(dr.i, dr.o, dr.clk)
 
 # Efinix DDRInput ----------------------------------------------------------------------------------
 
-class EfinixDDRInputImpl(Module):
-    def __init__(self, platform, i, o1, o2, clk):
+class EfinixDDRInputImpl(LiteXModule):
+    def __init__(self, i, o1, o2, clk):
+        assert_is_signal_or_clocksignal(clk)
+        platform  = LiteXContext.platform
         io_name   = platform.get_pin_name(i)
         io_pad    = platform.get_pin_location(i)
         io_prop   = platform.get_pin_properties(i)
@@ -311,8 +475,8 @@ class EfinixDDRInputImpl(Module):
             "properties"        : io_prop,
             "size"              : 1,
             "in_reg"            : "DDIO_RESYNC",
-            "in_clk_pin"        : clk, # FIXME.
-            "is_inclk_inverted" : False
+            "in_clk_pin"        : clk,
+            "in_clk_inv"        : 0
         }
         platform.toolchain.ifacewriter.blocks.append(block)
         platform.toolchain.excluded_ios.append(platform.get_pin(i))
@@ -320,7 +484,7 @@ class EfinixDDRInputImpl(Module):
 class EfinixDDRInput:
     @staticmethod
     def lower(dr):
-        return EfinixDDRInputImpl(dr.platform, dr.i, dr.o1, dr.o2, dr.clk)
+        return EfinixDDRInputImpl(dr.i, dr.o1, dr.o2, dr.clk)
 
 # Efinix Special Overrides -------------------------------------------------------------------------
 
@@ -331,7 +495,10 @@ efinix_special_overrides = {
     Tristate               : EfinixTristate,
     DifferentialOutput     : EfinixDifferentialOutput,
     DifferentialInput      : EfinixDifferentialInput,
+    SDROutput              : EfinixSDROutput,
+    SDRInput               : EfinixSDRInput,
     SDRTristate            : EfinixSDRTristate,
     DDROutput              : EfinixDDROutput,
     DDRInput               : EfinixDDRInput,
+    DDRTristate            : EfinixDDRTristate,
 }

@@ -1,29 +1,70 @@
-[> Changes since 2024.04
+[> Changes since 2024.08
 ------------------------
 	[> Fixed
 	--------
-	- cpu/zynq7000                  : Fixed AXI verison to AXI3.
-	- build/vhd2v_converter         : Fixed instance replace robustness.
-	- tools/litex_json2renode       : Corrected VexRiscv variants.
 
 	[> Added
 	--------
-	- cpu/vexiiriscv                : Added initial support.
-	- builder                       : Added default generation of exports with default names to output_dir.
+	- cpu/zynqmp   : Added SGMII support via PL andoptional PTP (#2095).
+	- liteeth/phy  : Improved 1000BaseX/2500BaseX PCS/PHYs (https://github.com/enjoy-digital/liteeth/pull/174).
+
+	[> Changed
+	----------
+
+[> 2024.08, released on September 27th 2024
+-------------------------------------------
+	[> Fixed
+	--------
+	- cpu/zynq7000                  : Fixed AXI version to AXI3.
+	- build/vhd2v_converter         : Fixed instance replace robustness.
+	- tools/litex_json2renode       : Corrected VexRiscv variants (#1984).
+	- software/liblitespi           : Fixed xor-used-pow bug (#2001).
+	- soc                           : Fixed AHB2Wishbone bridge creation (#1998).
+	- soc                           : Fixed parameters propagation for AXI data-width conversion (#1997).
+	- soc/cores/clock/colognechip   : Fixed and reworked locked signal handling.
+	- litesdcard                    : Fixed data_i sampling (https://github.com/enjoy-digital/litesdcard/pull/34).
+	- litespi/mmap                  : Fixed dummy bits (https://github.com/litex-hub/litespi/pull/71).
+	- sim/verilator                 : Fixed .fst empty dump with short simulation.
+
+	[> Added
+	--------
+	- cpu/vexiiriscv                : Added initial support (#1923).
+	- builder                       : Added default generation of exports with default names to output_dir (#1978).
 	- litex.gen                     : Added byte size definitions and use them in targets/json2dts.
 	- litepcie                      : Added external QPLL support/sharing for Xilinx Artix7.
-	- cores/zynq7000/mp             : Improved integration, added peripherals supports.
+	- cores/zynq7000/mp             : Improved integration, added peripherals supports (#1994).
 	- software/bios                 : Generalized IRQ handling approach between CPUs.
-	- cores/video                   : Added fifo_depth parameter to add_video_framebuffer.
+	- cores/video                   : Added fifo_depth parameter to add_video_framebuffer (#1931).
 	- gen/common                    : Added byte size definitions (KILOBYTE, MEGABYTE, GIGABYTE).
 	- tools/litex_json2dts_linux    : Simplified CPU architecture/RISC-V ISA.
-	- soc                           : Added add_spi_master method.
-	- tools/litex_json2dts_zephyr   : Added spimaster/spiflash handlers.
-	- tools/litex_json2renode       : Added .elf bios option.
+	- soc                           : Added add_spi_master method (#1985).
+	- tools/litex_json2dts_zephyr   : Added spimaster/spiflash handlers (#1985).
+	- tools/litex_json2renode       : Added .elf bios option (#1984).
+	- cores                         : Added Watchdog core and Zephyr support (#1996).
+	- soc                           : Added add_spi_ram method (#2028).
+	- build                         : Added initial Apicula (Gowin) Platform support (#2036).
+	- build                         : Added initial Agilex5 support.
+	- liteeth/mac                   : Improved broadcast filtering logic in Hybrid Mode (https://github.com/enjoy-digital/liteeth/pull/165).
+	- soc/cores/hyperbus            : Rewritten HyperRAM core to enhance performance and add new features (#2053).
+	- litedram                      : Added bank_byte_alignement parameter for improvded address mapping (https://github.com/enjoy-digital/litedram/pull/360).
+	- build/efinix                  : Added support for more primitives and improved clocking support. (#2060, #2075).
+	- software/bios                 : Added spiram support (#2058).
+	- liteeth/etherbone             : Added 64-bit support to Etherbone.
+	- liteeth/liteeth_gen           : Added XGMII support (PHY handled externally).
+	- soc/interconnect/stream       : Added optional CSR to Multiplexer/Demultiplexer and Crossbar module.
+	- tools/litex_json2dts_zephyr   : Improved support/update ((#1974).
+	- soc/cores/jtag                : Added Spartan7 support (#2076).
+	- liteeth/phy                   : Added 1000BASEX support for Virtex7 (https://github.com/enjoy-digital/liteeth/pull/171).
+	- liteeth/phy                   : Improved RGMII support on Efinix Titanium/Trion (https://github.com/enjoy-digital/liteeth/pull/168).
+	- liteiclink/serdes             : Added GTH/Virtex7 support (https://github.com/enjoy-digital/liteeth/pull/23).
+	- litespi/phy                   : Improved logic and cleanup (https://github.com/litex-hub/litespi/pull/73).
+	- litespi/mmap                  : Added write support for SPIRAM devices (https://github.com/litex-hub/litespi/pull/70).
+	- build/efinix                  : Improved name elaboration for Signals/Clocks to simplify user design.
 
 	[> Changed
 	----------
 	- integration/builder           : Changed export behavior to now generate csr.csv and csr.json by default to output_dir.
+	- csr_bus                       : Added .re signal (#1999).
 
 [> 2024.04, released on June 5th 2024
 -------------------------------------

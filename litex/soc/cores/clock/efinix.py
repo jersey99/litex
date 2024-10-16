@@ -85,12 +85,20 @@ class EFINIXPLL(LiteXModule):
             block["input_refclk_name"] = refclk_name
             block["resource"]        = pll_res
             block["clock_no"]        = clock_no
+            block["input_properties"] = self.platform.get_pin_properties(clkin)
             self.logger.info("Clock source: {}, using EXT_CLK{}".format(block["input_clock"], clock_no))
             self.platform.get_pll_resource(pll_res)
         else:
+            if name != "":
+                input_signal = name
+            elif clkin is not None:
+                input_signal = clkin.name_override
+            else:
+                self.logger.error("No clkin name nor clkin provided, can't continue")
+                quit()
             block["input_clock"]  = "INTERNAL" if self.type == "TITANIUMPLL" else "CORE"
             block["resource"]     = self.platform.get_free_pll_resource()
-            block["input_signal"] = name
+            block["input_signal"] = input_signal
             self.logger.info("Clock source: {}".format(block["input_clock"]))
 
         self.logger.info("PLL used     : " + colorer(str(self.platform.pll_used), "cyan"))
@@ -106,11 +114,16 @@ class EFINIXPLL(LiteXModule):
         clk_out_name = f"{self.name}_clkout{self.nclkouts}" if name == "" else name
 
         if cd is not None:
+            clk_name = f"{cd.name}_{self.name}_clk"
+            clk_out_name = clk_name # To unify constraints names
             self.platform.add_extension([(clk_out_name, 0, Pins(1))])
-            clk_name = f"{cd.name}_clk"
             clk_out = self.platform.request(clk_out_name)
             self.comb += cd.clk.eq(clk_out)
-            self.platform.add_period_constraint(clk=clk_out, period=1e9/freq, name=clk_name)
+            # Efinity will generate xxx.pt.sdc constraints automaticaly,
+            # so, the user realy need to use the toplevel pin from the pll instead of an intermediate signal
+            # This is a dirty workaround. But i don't have any better
+            cd.clk = clk_out
+            self.platform.clks[cd.name] = clk_out_name
             if with_reset:
                 self.specials += AsyncResetSynchronizer(cd, ~self.locked)
             self.platform.toolchain.excluded_ios.append(clk_out_name)
@@ -158,10 +171,10 @@ class EFINIXPLL(LiteXModule):
         # Pre-Divider (N).
         # -----------------
         # F_PFD is between 10e6 and 100e6
-        # so limit search to only acceptable factors
+        # so limit search to only acceptable factors
         N_min = int(math.ceil(clk_in_freq / pfd_range[1]))
         N_max = int(math.floor(clk_in_freq / pfd_range[0]))
-        ## limit
+        ## limit
         ### when fin is below FPLL_MAX min is < 1
         if N_min < 1:
             N_min = 1
@@ -200,7 +213,7 @@ class EFINIXPLL(LiteXModule):
         params_list = []
         for n in range(N_min, N_max + 1):
             fpfd_tmp = clk_in_freq / n
-            # limit range using FVCO_MAX & FVCO_MIN
+            # limit range using FVCO_MAX & FVCO_MIN
             # fVCO = fPFD * M * O * Cfbk
             # so:
             #          fVCO

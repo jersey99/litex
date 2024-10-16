@@ -77,9 +77,6 @@ class InterfaceWriter:
                 if block["type"] == "DRAM":
                     self.add_dram_xml(root, block)
 
-        if self.platform.iobank_info:
-            self.add_iobank_info_xml(root, self.platform.iobank_info)
-
         xml_string = et.tostring(root, "utf-8")
         reparsed = expatbuilder.parseString(xml_string, False)
         print_string = reparsed.toprettyxml(indent="    ")
@@ -118,6 +115,13 @@ design.create("{2}", "{3}", "./../gateware", overwrite=True)
 
 """
         return header.format(self.efinity_path, "True", build_name, partnumber)
+
+    def iobank_info(self, iobank_info):
+        cmd = "# ---------- IOBANK INFO ---------\n"
+        for name, iostd in iobank_info:
+            cmd += 'design.set_iobank_voltage("{0}", "{1}")\n'.format(name, iostd[:3])
+        cmd += "# ---------- END IOBANK INFO ---------\n\n"
+        return cmd
 
     def get_block(self, name):
         for b in self.blocks:
@@ -173,7 +177,6 @@ design.create("{2}", "{3}", "./../gateware", overwrite=True)
 
             if "out_clk_inv" in block:
                 cmd += f'design.set_property("{name}","IS_OUTCLK_INVERTED","{block["out_clk_inv"]}")\n'
-                cmd += f'design.set_property("{name}","OE_CLK_PIN_INV","{block["out_clk_inv"]}")\n'
 
             if "in_reg" in block:
                 cmd += f'design.set_property("{name}","IN_REG","{block["in_reg"]}")\n'
@@ -186,8 +189,11 @@ design.create("{2}", "{3}", "./../gateware", overwrite=True)
 
             if "oe_reg" in block:
                 cmd += f'design.set_property("{name}","OE_REG","{block["oe_reg"]}")\n'
-            if "oe_clk_pin" in block:
-                cmd += f'design.set_property("{name}","OE_CLK_PIN","{block["oe_clk_pin"]}")\n'
+
+            if "drive_strength" in block:
+                cmd += 'design.set_property("{}","DRIVE_STRENGTH","{}")\n'.format(name, block["drive_strength"])
+            if "slewrate" in block:
+                cmd += 'design.set_property("{}","SLEWRATE","{}")\n'.format(name, block["slewrate"])
 
             if prop:
                 for p, val in prop:
@@ -204,10 +210,21 @@ design.create("{2}", "{3}", "./../gateware", overwrite=True)
                 for i, pad in enumerate(block["location"]):
                     cmd += f'design.assign_pkg_pin("{name}[{i}]","{pad}")\n'
             if "in_reg" in block:
+                in_clk_pin = block["in_clk_pin"]
+                if isinstance(in_clk_pin, ClockSignal):
+                    # Try to find cd name
+                    in_clk_pin_name = self.platform.clks.get(in_clk_pin.cd, None)
+                    # If not found cd name has been updated with "_clk" as suffix.
+                    if in_clk_pin_name is None:
+                        in_clk_pin_name = self.platform.clks.get(in_clk_pin.cd + "_clk")
+                    in_clk_pin = in_clk_pin_name
+
                 cmd += f'design.set_property("{name}","IN_REG","{block["in_reg"]}")\n'
-                cmd += f'design.set_property("{name}","IN_CLK_PIN","{block["in_clk_pin"]}")\n'
+                cmd += f'design.set_property("{name}","IN_CLK_PIN","{in_clk_pin}")\n'
                 if "in_delay" in block:
                     cmd += f'design.set_property("{name}","INDELAY","{block["in_delay"]}")\n'
+            if "in_clk_inv" in block:
+                cmd += f'design.set_property("{name}","IS_INCLK_INVERTED","{block["in_clk_inv"]}")\n'
             if prop:
                 for p, val in prop:
                     cmd += 'design.set_property("{}","{}","{}")\n'.format(name, p, val)
@@ -231,10 +248,11 @@ design.create("{2}", "{3}", "./../gateware", overwrite=True)
 
             if "out_clk_inv" in block:
                 cmd += f'design.set_property("{name}","IS_OUTCLK_INVERTED","{block["out_clk_inv"]}")\n'
-                cmd += f'design.set_property("{name}","OE_CLK_PIN_INV","{block["out_clk_inv"]}")\n'
 
             if "drive_strength" in block:
-                cmd += 'design.set_property("{}","DRIVE_STRENGTH","4")\n'.format(name, block["drive_strength"])
+                cmd += 'design.set_property("{}","DRIVE_STRENGTH","{}")\n'.format(name, block["drive_strength"])
+            if "slewrate" in block:
+                cmd += 'design.set_property("{}","SLEWRATE","{}")\n'.format(name, block["slewrate"])
 
             if prop:
                 for p, val in prop:
@@ -295,6 +313,8 @@ design.create("{2}", "{3}", "./../gateware", overwrite=True)
             else:
                 cmd += 'design.gen_pll_ref_clock("{}", pll_res="{}", refclk_src="{}", refclk_name="{}", ext_refclk_no="{}")\n\n' \
                     .format(name, block["resource"], block["input_clock"], block["input_clock_name"], block["clock_no"])
+            for p, val in block["input_properties"]:
+                cmd += 'design.set_property("{}","{}","{}")\n'.format(block["input_clock_name"], p, val)
         else:
             cmd += 'design.gen_pll_ref_clock("{}", pll_res="{}", refclk_name="{}", refclk_src="CORE")\n'.format(name, block["resource"], block["input_signal"])
             cmd += 'design.set_property("{}", "CORE_CLK_PIN", "{}", block_type="PLL")\n\n'.format(name, block["input_signal"])
@@ -329,7 +349,7 @@ design.create("{2}", "{3}", "./../gateware", overwrite=True)
             cmd += 'design.set_property("{}", "FEEDBACK_MODE", "{}", "PLL")\n'.format(name, "LOCAL" if feedback_clk < 1 else "CORE")
             cmd += 'design.set_property("{}", "FEEDBACK_CLK", "CLK{}", "PLL")\n'.format(name, 0 if feedback_clk < 1 else feedback_clk)
 
-        # auto_calc_pll_clock is always working with Titanium and only working when feedback is unused for Trion
+        # auto_calc_pll_clock is always working with Titanium and only working when feedback is unused for Trion
         if block["feedback"] == -1 or block["version"] == "V3":
             cmd += "target_freq = {\n"
             for i, clock in enumerate(block["clk_out"]):
@@ -426,6 +446,11 @@ design.create("{2}", "{3}", "./../gateware", overwrite=True)
         slow_clk = block.get("slow_clk", "")
         half_rate= block.get("half_rate", "0")
         tx_output_load=block.get("output_load", "3")
+
+        if type(slow_clk) == ClockSignal:
+            slow_clk = self.platform.clks[slow_clk.cd]
+        if type(fast_clk) == ClockSignal:
+            fast_clk = self.platform.clks[fast_clk.cd]
 
         if mode == "OUTPUT":
             block_type = "LVDS_TX"
@@ -660,12 +685,3 @@ design.create("{2}", "{3}", "./../gateware", overwrite=True)
 design.generate(enable_bitstream=True)
 # Save the configured periphery design
 design.save()"""
-
-
-    def add_iobank_info_xml(self, root, iobank_info):
-        dev = root.find("efxpt:device_info", namespaces)
-        bank_info = dev.find("efxpt:iobank_info", namespaces)
-        for name, iostd in iobank_info:
-            for child in bank_info:
-                    if name == child.get("name"):
-                        child.set("iostd", iostd)
