@@ -45,7 +45,7 @@ def indent(line, levels=1):
 
 
 def indent_all(text, levels=1):
-    return '\n'.join(map(indent, text.splitlines()))
+    return '\n'.join([indent(line, levels) for line in text.splitlines()])
 
 
 def indent_all_but_first(text, levels=1):
@@ -66,27 +66,26 @@ def dts_close():
     return "};\n"
 
 
-def dts_intr(name, csr):
-    return indent("interrupts = <{} 0>;\n".format(
-        hex(csr['constants'][name + '_interrupt'])
-    ))
+def dts_intr(name, csr, levels=1):
+    irq = csr['constants'].get(name + '_interrupt', None)
+    return indent(f"interrupts = <{irq} 0>;\n" if irq else "", levels)
 
 
-def dts_reg(regs):
+def dts_reg(regs, levels=1):
     dtsi = 'reg = <'
 
-    formatted_registers = '\n'.join(
+    formatted_registers = '>,\n<'.join(
         '0x{:x} 0x{:x}'.format(reg['addr'], reg['size'])
         for reg in regs
     )
 
-    dtsi += indent_all_but_first(formatted_registers)
+    dtsi += indent_all_but_first(formatted_registers, 1)
     dtsi += '>;'
 
-    return indent_all(dtsi) + '\n'
+    return indent_all(dtsi, levels) + '\n'
 
 
-def dts_reg_names(regs):
+def dts_reg_names(regs, levels=1):
     dtsi = 'reg-names = '
 
     formatted_registers = ',\n'.join(
@@ -94,10 +93,10 @@ def dts_reg_names(regs):
         for reg in regs
     )
 
-    dtsi += indent_all_but_first(formatted_registers)
+    dtsi += indent_all_but_first(formatted_registers, 1)
     dtsi += ';'
 
-    return indent_all(dtsi) + '\n'
+    return indent_all(dtsi, levels) + '\n'
 
 
 # DTS handlers
@@ -253,16 +252,13 @@ overlay_handlers = {
     'uart': {
         'handler': peripheral_handler,
         'alias': 'uart0',
-        'config_entry': 'UART_LITEUART'
     },
     'timer0': {
         'handler': peripheral_handler,
-        'config_entry': 'LITEX_TIMER'
     },
     'ethmac': {
         'handler': ethmac_handler,
         'alias': 'eth0',
-        'config_entry': 'ETH_LITEETH'
     },
     'spimaster': {
         'handler': spimaster_handler,
@@ -276,48 +272,48 @@ overlay_handlers = {
         'handler': peripheral_handler,
         'alias': 'sdcard_block2mem',
         'size': 0x18,
-        'config_entry': 'SD_LITESD'
+        'disable_handler': False,
     },
     'sdcard_core': {
         'handler': peripheral_handler,
         'alias': 'sdcard_core',
         'size': 0x2C,
-        'config_entry': 'SD_LITESD'
+        'disable_handler': False,
     },
     'sdcard_irq': {
         'handler': peripheral_handler,
         'alias': 'sdcard_irq',
         'size': 0x0C,
-        'config_entry': 'SD_LITESD'
+        'disable_handler': False,
     },
     'sdcard_mem2block': {
         'handler': peripheral_handler,
         'alias': 'sdcard_mem2block',
         'size': 0x18,
-        'config_entry': 'SD_LITESD'
+        'disable_handler': False,
     },
     'sdcard_phy': {
         'handler': peripheral_handler,
         'alias': 'sdcard_phy',
         'size': 0x10,
-        'config_entry': 'SD_LITESD'
+        'disable_handler': False,
     },
     'i2c0' : {
         'handler': i2c_handler,
-        'config_entry': 'I2C_LITEX'
     },
     'i2s_rx' : {
         'handler': i2s_handler,
-        'config_entry': 'I2S_LITEX'
     },
     'i2s_tx' : {
         'handler': i2s_handler,
-        'config_entry': 'I2S_LITEX'
+    },
+    'watchdog0': {
+        'handler': peripheral_handler,
+        'alias': 'wdt0',
     },
     'mmcm' : {
         'alias': 'clock0',
         'handler': peripheral_handler,
-        'config_entry': 'CLOCK_CONTROL_LITEX'
     },
     'main_ram': {
         'handler': ram_handler,
@@ -341,10 +337,14 @@ def generate_dts_config(csr):
         try:
             dtsi += parm['handler'](name, parm, csr)
         except KeyError as e:
-            print('  dtsi key', e, 'not found, disable', name)
             enable = 'n'
-            dtsi += disabled_handler(name, parm, csr)
-
+            if parm.get('disable_handler', True):
+                print('  dtsi key', e, 'not found, disable', name)
+                dtsi += disabled_handler(name, parm, csr)
+            else:
+                print('  dtsi key', e, 'not found, skip', name)
+                continue
+        
         dtsi += dts_close()
         dts += dtsi
         if 'config_entry' in parm:

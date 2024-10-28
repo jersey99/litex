@@ -211,6 +211,13 @@ class VexRiscvSMP(CPU):
     # Default Configs Generation.
     @staticmethod
     def generate_default_configs():
+        # Sim
+        VexRiscvSMP.wishbone_memory = False
+        VexRiscvSMP.hardware_breakpoints = 1
+        VexRiscvSMP.coherent_dma = False
+        VexRiscvSMP.generate_cluster_name()
+        VexRiscvSMP.generate_netlist()
+
         # Single cores.
         for data_width in [None, 16, 32, 64, 128]:
             if data_width is None:
@@ -248,6 +255,8 @@ class VexRiscvSMP(CPU):
                                               or data_width < 64 else 64
             VexRiscvSMP.dcache_width   = 32 if data_width is None \
                                               or data_width < 64 else 64
+
+            VexRiscvSMP.hardware_breakpoint = 0
 
             # Without DMA.
             VexRiscvSMP.coherent_dma = False
@@ -462,6 +471,14 @@ class VexRiscvSMP(CPU):
                     f.write(line)
         add_synthesis_define(cluster_filename)
         platform.add_source(cluster_filename, "verilog")
+
+    def add_jtag(self, pads):
+        self.comb += [
+            self.jtag_tms.eq(pads.tms),
+            self.jtag_clk.eq(pads.tck),
+            self.jtag_tdi.eq(pads.tdi),
+            pads.tdo.eq(self.jtag_tdo),
+        ]
 
     def add_soc_components(self, soc):
         if self.variant == "linux":
