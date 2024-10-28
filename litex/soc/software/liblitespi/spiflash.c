@@ -190,7 +190,7 @@ static void spiflash_write_enable(void)
 
 static void page_program(uint32_t addr, uint8_t *data, int len)
 {
-	w_buf[0] = 0x02;
+	w_buf[0] = 0x12;
 	w_buf[1] = addr>>24;
 	w_buf[2] = addr>>16;
 	w_buf[3] = addr>>8;
@@ -201,7 +201,7 @@ static void page_program(uint32_t addr, uint8_t *data, int len)
 
 static void spiflash_sector_erase(uint32_t addr)
 {
-	w_buf[0] = 0xd8;
+	w_buf[0] = 0xdc;
 	w_buf[1] = addr>>24;
 	w_buf[2] = addr>>16;
 	w_buf[3] = addr>>8;
@@ -332,9 +332,6 @@ void spiflash_init(void)
 
 	/* Test SPI Flash speed */
 	spiflash_memspeed();
-#ifdef SPIFLASH_LARGE
-	spiflash_extad_set();
-#endif
 }
 
 #endif
