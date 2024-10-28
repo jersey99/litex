@@ -16,6 +16,8 @@
 
 //#define SPIFLASH_DEBUG
 
+#define SPIFLASH_LARGE
+
 #if defined(CSR_SPIFLASH_CORE_BASE)
 
 int spiflash_freq_init(void)
@@ -115,8 +117,8 @@ static void spiflash_master_write(uint32_t val, size_t len, size_t width, uint32
 	spiflash_core_master_cs_write(0);
 }
 
-static volatile uint8_t w_buf[SPI_FLASH_BLOCK_SIZE + 4];
-static volatile uint8_t r_buf[SPI_FLASH_BLOCK_SIZE + 4];
+static volatile uint8_t w_buf[SPI_FLASH_BLOCK_SIZE + 5];
+static volatile uint8_t r_buf[SPI_FLASH_BLOCK_SIZE + 5];
 
 static uint32_t transfer_byte(uint8_t b)
 {
@@ -189,24 +191,37 @@ static void spiflash_write_enable(void)
 static void page_program(uint32_t addr, uint8_t *data, int len)
 {
 	w_buf[0] = 0x02;
-	w_buf[1] = addr>>16;
-	w_buf[2] = addr>>8;
-	w_buf[3] = addr>>0;
-	memcpy((void *)w_buf+4, (void *)data, len);
-	transfer_cmd(w_buf, r_buf, len+4);
+	w_buf[1] = addr>>24;
+	w_buf[2] = addr>>16;
+	w_buf[3] = addr>>8;
+	w_buf[4] = addr>>0;
+	memcpy((void *)w_buf+5, (void *)data, len);
+	transfer_cmd(w_buf, r_buf, len+5);
 }
 
 static void spiflash_sector_erase(uint32_t addr)
 {
 	w_buf[0] = 0xd8;
-	w_buf[1] = addr>>16;
-	w_buf[2] = addr>>8;
-	w_buf[3] = addr>>0;
-	transfer_cmd(w_buf, r_buf, 4);
+	w_buf[1] = addr>>24;
+	w_buf[2] = addr>>16;
+	w_buf[3] = addr>>8;
+	w_buf[4] = addr>>0;
+	transfer_cmd(w_buf, r_buf, 5);
+}
+
+static void spiflash_extad_set(void)
+{
+#ifdef SPIFLASH_DEBUG
+	printf("Setting extended addressing\n");
+#endif
+	uint8_t buf[1];
+	w_buf[0] = 0x17;
+	w_buf[1] = 0x80;
+	transfer_cmd(w_buf, buf, 1);
 }
 
 /* erase page size in bytes, check flash datasheet */
-#define SPI_FLASH_ERASE_SIZE (64*1024)
+#define SPI_FLASH_ERASE_SIZE (256*1024)
 
 #define min(x, y) (((x) < (y)) ? (x) : (y))
 
@@ -317,6 +332,9 @@ void spiflash_init(void)
 
 	/* Test SPI Flash speed */
 	spiflash_memspeed();
+#ifdef SPIFLASH_LARGE
+	spiflash_extad_set();
+#endif
 }
 
 #endif
