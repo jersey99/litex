@@ -12,5 +12,6 @@ void flashboot(void);
 void romboot(void);
 void sdcardboot(void);
 void sataboot(void);
+void netload_fpga(void);
 
 #endif /* __BOOT_H */

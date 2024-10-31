@@ -232,6 +232,7 @@ __attribute__((__used__)) int main(int i, char **c)
 	if(sdr_ok) {
 		printf("--============== \e[1mBoot\e[0m ==================--\n");
 		boot_sequence();
+		netload_fpga();
 		printf("\n");
 	}
 #endif
@@ -244,6 +245,8 @@ __attribute__((__used__)) int main(int i, char **c)
 #if !defined(BIOS_CONSOLE_LITE) && !defined(BIOS_CONSOLE_NO_HISTORY)
 	hist_init();
 #endif
+
+
 	printf("\n%s", PROMPT);
 	while(1) {
 		readline(buffer, CMD_LINE_BUFFER_SIZE);

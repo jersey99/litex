@@ -322,6 +322,34 @@ static unsigned int remote_ip[4] = {REMOTEIP1, REMOTEIP2, REMOTEIP3, REMOTEIP4};
 static unsigned int remote_ip[4] = {192, 168, 1, 100};
 #endif
 
+uint8_t get_and_program_fpga = 0;
+
+static void listener_callback(uint32_t src_ip, uint16_t src_port,
+    uint16_t dst_port, void *_data, unsigned int length)
+{
+	char *data = _data;
+	printf("Got something\n");
+	if(length != 11) return;
+	if(dst_port != 0x4c44) return;
+	if(strncmp(data, "sfb_program", 11) == 0) {
+	  get_and_program_fpga = 1;
+	}
+}
+
+void netload_fpga(void) {
+  unsigned int _counter = 0;
+  printf("netload_fpga\n");
+  udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], local_ip[3]));
+  udp_set_callback((udp_callback) listener_callback);
+  while (get_and_program_fpga != 1) {
+    udp_service();
+    _counter ++;
+    if (_counter % 10000 == 0)
+      printf(".\n");
+  }
+
+}
+
 static int copy_file_from_tftp_to_ram(unsigned int ip, unsigned short server_port,
 const char *filename, char *buffer)
 {
