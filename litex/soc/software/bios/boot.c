@@ -322,6 +322,19 @@ static unsigned int remote_ip[4] = {REMOTEIP1, REMOTEIP2, REMOTEIP3, REMOTEIP4};
 static unsigned int remote_ip[4] = {192, 168, 1, 100};
 #endif
 
+
+static int copy_file_from_tftp_to_ram(unsigned int ip, unsigned short server_port,
+const char *filename, char *buffer)
+{
+	int size;
+	printf("Copying %s to %p... ", filename, buffer);
+	size = tftp_get(ip, server_port, filename, buffer);
+	if(size > 0)
+		printf("(%d bytes)", size);
+	printf("\n");
+	return size;
+}
+
 uint8_t get_and_program_fpga = 0;
 
 static void listener_callback(uint32_t src_ip, uint16_t src_port,
@@ -338,6 +351,7 @@ static void listener_callback(uint32_t src_ip, uint16_t src_port,
 
 void netload_fpga(void) {
   unsigned int _counter = 0;
+  int size = 0;
   printf("netload_fpga\n");
   udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], local_ip[3]));
   udp_set_callback((udp_callback) listener_callback);
@@ -347,19 +361,13 @@ void netload_fpga(void) {
     if (_counter % 10000 == 0)
       printf(".\n");
   }
-
-}
-
-static int copy_file_from_tftp_to_ram(unsigned int ip, unsigned short server_port,
-const char *filename, char *buffer)
-{
-	int size;
-	printf("Copying %s to %p... ", filename, buffer);
-	size = tftp_get(ip, server_port, filename, buffer);
-	if(size > 0)
-		printf("(%d bytes)", size);
-	printf("\n");
-	return size;
+  size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
+				    TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
+  if (size <= 0) {
+    printf("no file found\n");
+    return;
+  }
+  printf("image loaded to ram: %d bytes!\n", size);
 }
 
 #ifdef ETH_DYNAMIC_IP
