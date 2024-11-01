@@ -31,6 +31,8 @@
 #include <libliteeth/udp.h>
 #include <libliteeth/tftp.h>
 
+#include <liblitespi/spiflash.h>
+
 #include <liblitesdcard/spisdcard.h>
 #include <liblitesdcard/sdcard.h>
 #include <liblitesata/sata.h>
@@ -364,10 +366,20 @@ void netload_fpga(void) {
   size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
 				    TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
   if (size <= 0) {
-    printf("no file found\n");
+    printf("no bin file found\n");
     return;
   }
-  printf("image loaded to ram: %d bytes!\n", size);
+  size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
+				    TFTP_SERVER_PORT, "board_id", (void *)MAIN_RAM_BASE + 0x3fc0000);
+  if (size <= 0) {
+    printf("no board_id file found\n");
+    return;
+  }
+  printf("erasing board id sector");
+  spiflash_erase_range(0x3fc0000, 1);
+  printf("programming board id %c\n", *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000));
+  spiflash_write_stream(0x3fc0000, (uint8_t *)MAIN_RAM_BASE + 0x3fc0000, 1);
+  printf("both files loaded to ram: %d bytes!\n", size);
 }
 
 #ifdef ETH_DYNAMIC_IP
