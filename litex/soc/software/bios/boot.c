@@ -354,8 +354,14 @@ static void listener_callback(uint32_t src_ip, uint16_t src_port,
 void netload_fpga(void) {
   unsigned int _counter = 0;
   int size = 0;
+  uint8_t last_byte_local_ip = *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000);
+  last_byte_local_ip = *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000) + 141;
+
+  if (last_byte_local_ip == 0xFF)
+    last_byte_local_ip = 0;
+
   printf("netload_fpga\n");
-  udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], local_ip[3]));
+  udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], last_byte_local_ip));
   udp_set_callback((udp_callback) listener_callback);
   while (get_and_program_fpga != 1) {
     udp_service();
