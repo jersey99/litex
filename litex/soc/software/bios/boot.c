@@ -390,7 +390,7 @@ void netload_fpga(void) {
     spiflash_erase_range(0x3fc0000, 1);
     printf("programming board id %c\n", *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000));
     spiflash_write_stream(0x3fc0000, (uint8_t *)MAIN_RAM_BASE + 0x3fc0000, 1);
-    get_and_program_fpga = 0;
+    return;
   }
 }
 
