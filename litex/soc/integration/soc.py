@@ -1916,7 +1916,7 @@ class LiteXSoC(SoC):
             add_ip_address_constants(self, "REMOTEIP", remote_ip)
         if mac_address:
             add_mac_address_constants(self, "MACADDR", mac_address)
-        
+
 
         # Software Debug
         if software_debug:
@@ -2141,12 +2141,12 @@ class LiteXSoC(SoC):
         spiram_core = LiteSPI(spiram_phy, mmap_endianness=self.cpu.endianness, with_mmap_write=True, **kwargs)
         self.add_module(name=f"{name}_core", module=spiram_core)
         spiram_region = SoCRegion(origin=self.mem_map.get(name, None), size=module.total_size)
-        
+
         # Create Wishbone Slave.
         wb_spiram = wishbone.Interface(data_width=32, address_width=32, addressing="word")
         self.bus.add_slave(name=name, slave=wb_spiram, region=spiram_region)
         self.comb += spiram_core.mmap.offset.eq(self.bus.regions.get(name, None).origin)
-        
+
         # L2 Cache
         if l2_cache_size != 0:
             # Insert L2 cache inbetween Wishbone bus and LiteSPI
