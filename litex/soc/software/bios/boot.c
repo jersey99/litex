@@ -377,6 +377,10 @@ void netload_fpga(void) {
     }
     printf("erasing fpga image sectors");
     spiflash_erase_range(0, size);
+    printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
+    printf("Setting MMAP to Write\n");
+    spiflash_core_mmap_write_config_write(1);
+    printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
     printf("now writing image to flash\n");
     spiflash_write_stream(0, (uint8_t *)MAIN_RAM_BASE, size);
 
@@ -384,12 +388,14 @@ void netload_fpga(void) {
 				      TFTP_SERVER_PORT, "board_id", (void *)MAIN_RAM_BASE + 0x3fc0000);
     if (size <= 0) {
       printf("no board_id file found\n");
-      continue;
     }
     printf("erasing board id sector");
     spiflash_erase_range(0x3fc0000, 1);
     printf("programming board id %c\n", *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000));
     spiflash_write_stream(0x3fc0000, (uint8_t *)MAIN_RAM_BASE + 0x3fc0000, 1);
+    printf("Turning off SPI FLASH MMAP write enable\n");
+    spiflash_core_mmap_write_config_write(0);
+    printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
     return;
   }
 }
