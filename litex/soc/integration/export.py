@@ -236,9 +236,8 @@ def _generate_csr_definitions_c(reg_name, reg_base, nwords, csr_base, with_csr_b
 
 def _generate_csr_region_definitions_c(name, region, origin, alignment, csr_base, with_csr_base_define):
     base_define = with_csr_base_define and not isinstance(region, MockCSRRegion)
-    base = csr_base if not isinstance(region, MockCSRRegion) else 0
     region_defs = f"\n/* {name.upper()} Registers */\n"
-    region_defs += f"#define CSR_{name.upper()}_BASE {_get_csr_addr(base, origin, base_define)}\n"
+    region_defs += f"#define CSR_{name.upper()}_BASE {_get_csr_addr(csr_base, origin, base_define)}\n"
 
     if not isinstance(region.obj, Memory):
         for csr in region.obj:
@@ -247,7 +246,7 @@ def _generate_csr_region_definitions_c(name, region, origin, alignment, csr_base
                 reg_name              = name + "_" + csr.name,
                 reg_base              = origin,
                 nwords                = nr,
-                csr_base              = base,
+                csr_base              = csr_base,
                 with_csr_base_define  = base_define,
             )
             origin += alignment // 8 * nr
@@ -591,9 +590,66 @@ def load_csr_json(filename, origin=0, name=""):
     # Return CSR Regions, Constants, Mem Regions.
     return csr_regions, constants, mem_regions
 
+def get_controls_json(csr_regions={}, constants={}, mem_regions={}):
+    alignment = constants.get("CONFIG_CSR_ALIGNMENT", 32)
+
+    d = {
+        "csr_bases":     {},
+        "csr_registers": {},
+        "constants":     {},
+        "memories":      {},
+    }
+
+    with open('controls.csv', 'w') as f:
+        f.write("Address, Bitmask, UsedForEPICS, PVName, DataType, WriteMode, PVClass, AccessMode, Description, FullDescription, Units, ReadbackCalculation, SetpointCalculation, InitialValue, Priority, MultiBinaryBitFields, ReadbackEPICSFields, ReadbackInfoTags, SetpointEPICSFields, SetpointInfoTags, DisplayType\n")
+
+        for name, region in csr_regions.items():
+            d["csr_bases"][name] = region.origin
+            region_origin = region.origin
+            if not isinstance(region.obj, Memory):
+                for csr in region.obj:
+                    _size = (csr.size + region.busword - 1)//region.busword
+                    _bits = csr.size
+                    _type = "rw"
+                    if isinstance(csr, CSRStatus) and not hasattr(csr, "r"):
+                        _type = "ro"
+                    d["csr_registers"][name + "_" + csr.name] = {
+                        "addr": region_origin,
+                        "size": _size,
+                        "bits": _bits,
+                        "type": _type
+                    }
+                    rename = ''.join([x.title() for x in csr.name.split('_')])
+                    if name.startswith("controls"):
+                        reset_val = csr.storage.reset.value if hasattr(csr, "storage") else csr.status.reset.value
+                        F_string = f"{hex(region_origin)}, {hex(2**csr.size - 1)}, Y, {rename}, {'Bit' if csr.size is 1 else 'Int32'}, Trigger, CORSO, {_type}, {csr.description[:40]}, {csr.description}, , , , {reset_val}, 0, , , , , ,"
+                        print(region_origin, csr.name)
+                        if hasattr(csr, "fields"):
+                            for fld in csr.fields.fields:
+                                F_string = f"{hex(region_origin)}, {hex((2**fld.size-1) << fld.offset)}, Y, {rename+fld.name.title()}, {'Bit' if fld.size is 1 else 'Int32'}, Trigger, CORSO, {_type}, {fld.description[:40]}, {fld.description}, , , , {fld.reset_value}, 0, , , , , ,"
+                                f.write(F_string)
+                                f.write("\n")
+                        else:
+                            f.write(F_string)
+                            f.write("\n")
+                    region_origin += alignment//8*_size
+
+    for name, value in constants.items():
+        d["constants"][name.lower()] = value.lower() if isinstance(value, str) else value
+
+    for name, region in mem_regions.items():
+        d["memories"][name.lower()] = {
+            "base": region.origin,
+            "size": region.length,
+            "type": region.type,
+        }
+    return json.dumps(d, indent=4)
+
+
 # CSV Export --------------------------------------------------------------------------------------
 
 def get_csr_csv(csr_regions={}, constants={}, mem_regions={}):
+    get_controls_json(csr_regions, constants, mem_regions)
     d = json.loads(get_csr_json(csr_regions, constants, mem_regions))
     r = generated_banner("#")
     for name, value in d["csr_bases"].items():
