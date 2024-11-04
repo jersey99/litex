@@ -363,28 +363,35 @@ void netload_fpga(void) {
   printf("netload_fpga\n");
   udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], last_byte_local_ip));
   udp_set_callback((udp_callback) listener_callback);
-  while (get_and_program_fpga != 1) {
-    udp_service();
-    _counter ++;
-    if (_counter % 10000 == 0)
-      printf(".\n");
+  while (1) {
+    while (get_and_program_fpga != 1) {
+      udp_service();
+      _counter ++;
+      if (_counter % 1000000 == 0)
+	printf(".\n");
+    }
+    size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
+				      TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
+    if (size <= 0) {
+      printf("no bin file found\n");
+    }
+    printf("erasing fpga image sectors");
+    spiflash_erase_range(0, size);
+    printf("now writing image to flash\n");
+    spiflash_write_stream(0, (uint8_t *)MAIN_RAM_BASE, size);
+
+    size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
+				      TFTP_SERVER_PORT, "board_id", (void *)MAIN_RAM_BASE + 0x3fc0000);
+    if (size <= 0) {
+      printf("no board_id file found\n");
+      continue;
+    }
+    printf("erasing board id sector");
+    spiflash_erase_range(0x3fc0000, 1);
+    printf("programming board id %c\n", *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000));
+    spiflash_write_stream(0x3fc0000, (uint8_t *)MAIN_RAM_BASE + 0x3fc0000, 1);
+    get_and_program_fpga = 0;
   }
-  size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
-				    TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
-  if (size <= 0) {
-    printf("no bin file found\n");
-  }
-  size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
-				    TFTP_SERVER_PORT, "board_id", (void *)MAIN_RAM_BASE + 0x3fc0000);
-  if (size <= 0) {
-    printf("no board_id file found\n");
-    return;
-  }
-  printf("erasing board id sector");
-  spiflash_erase_range(0x3fc0000, 1);
-  printf("programming board id %c\n", *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000));
-  spiflash_write_stream(0x3fc0000, (uint8_t *)MAIN_RAM_BASE + 0x3fc0000, 1);
-  printf("both files loaded to ram: %d bytes!\n", size);
 }
 
 #ifdef ETH_DYNAMIC_IP
