@@ -373,7 +373,6 @@ void netload_fpga(void) {
 				    TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
   if (size <= 0) {
     printf("no bin file found\n");
-    return;
   }
   size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
 				    TFTP_SERVER_PORT, "board_id", (void *)MAIN_RAM_BASE + 0x3fc0000);
@@ -602,11 +601,17 @@ void netboot(int nb_params, char **params)
 
 	printf("Booting from network...\n");
 
-	printf("Local IP: %d.%d.%d.%d\n", local_ip[0], local_ip[1], local_ip[2], local_ip[3]);
+  uint8_t last_byte_local_ip = *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000);
+  last_byte_local_ip = *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000) + 141;
+
+  if (last_byte_local_ip == 0xFF)
+    last_byte_local_ip = 0;
+
+	printf("Local IP: %d.%d.%d.%d\n", local_ip[0], local_ip[1], local_ip[2], last_byte_local_ip);
 	printf("Remote IP: %d.%d.%d.%d\n", remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]);
 
 	ip = IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]);
-	udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], local_ip[3]));
+	udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], last_byte_local_ip));
 
 	if (filename) {
 		printf("Booting from %s (JSON)...\n", filename);
