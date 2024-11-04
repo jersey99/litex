@@ -354,8 +354,8 @@ static void listener_callback(uint32_t src_ip, uint16_t src_port,
 void netload_fpga(void) {
   unsigned int _counter = 0;
   int size = 0;
-  uint8_t last_byte_local_ip = *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000);
-  last_byte_local_ip = *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000) + 141;
+  uint8_t last_byte_local_ip = *((uint8_t *) 0x3fc0000);
+  last_byte_local_ip = *((uint8_t *)0x3fc0000) + 141;
 
   if (last_byte_local_ip == 0xFF)
     last_byte_local_ip = 0;
@@ -601,8 +601,8 @@ void netboot(int nb_params, char **params)
 
 	printf("Booting from network...\n");
 
-  uint8_t last_byte_local_ip = *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000);
-  last_byte_local_ip = *((uint8_t *)MAIN_RAM_BASE + 0x3fc0000) + 141;
+  uint8_t last_byte_local_ip = *((uint8_t *)0x3fc0000);
+  last_byte_local_ip = *((uint8_t *)0x3fc0000) + 141;
 
   if (last_byte_local_ip == 0xFF)
     last_byte_local_ip = 0;
