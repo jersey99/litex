@@ -4,6 +4,7 @@
 # Copyright (c) 2018-2020 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
+from migen.genlib.cdc import MultiReg
 from litex.gen import *
 
 from litex.soc.cores.clock.common import *
@@ -113,13 +114,14 @@ class USPIDELAYCTRL(LiteXModule):
     def __init__(self, cd_ref, cd_sys, reset_cycles=64, ready_cycles=64):
         self.cd_ic = ClockDomain()
         ic_reset_counter = Signal(max=reset_cycles, reset=reset_cycles-1)
+        _ic_reset         = Signal(reset=1)
         ic_reset         = Signal(reset=1)
         cd_ref_sync      = getattr(self.sync, cd_ref.name)
         cd_ref_sync += [
             If(ic_reset_counter != 0,
                 ic_reset_counter.eq(ic_reset_counter - 1)
             ).Else(
-                ic_reset.eq(0)
+                _ic_reset.eq(0)
             )
         ]
         ic_ready_counter = Signal(max=ready_cycles, reset=ready_cycles-1)
@@ -136,6 +138,7 @@ class USPIDELAYCTRL(LiteXModule):
             )
         ]
         self.specials += [
+            MultiReg(_ic_reset, ic_reset, odomain=cd_ref.name, n=5),
             Instance("IDELAYCTRL",
                 p_SIM_DEVICE = "ULTRASCALE",
                 i_REFCLK     = cd_ref.clk,
