@@ -110,7 +110,7 @@ class USPMMCM(XilinxClocking):
 
 
 class USPIDELAYCTRL(LiteXModule):
-    def __init__(self, cd_ref, cd_sys, reset_cycles=64, ready_cycles=64):
+    def __init__(self, cd_ref, cd_sys, reset_cycles=64, ready_cycles=64, control_sys_reset=True):
         self.cd_ic = ClockDomain()
         ic_reset_counter = Signal(max=reset_cycles, reset=reset_cycles-1)
         ic_reset         = Signal(reset=1)
@@ -125,16 +125,18 @@ class USPIDELAYCTRL(LiteXModule):
         ic_ready_counter = Signal(max=ready_cycles, reset=ready_cycles-1)
         ic_ready         = Signal()
         self.comb += self.cd_ic.clk.eq(cd_sys.clk)
-        self.sync.ic += [
-            cd_sys.rst.eq(1),
-            If(ic_ready,
-                If(ic_ready_counter != 0,
-                    ic_ready_counter.eq(ic_ready_counter - 1)
-                ).Else(
-                    cd_sys.rst.eq(0)
+        if control_sys_reset:
+            self.sync.ic += [
+                cd_sys.rst.eq(1),
+                If(ic_ready,
+                    If(ic_ready_counter != 0,
+                        ic_ready_counter.eq(ic_ready_counter - 1)
+                    ).Else(
+                        cd_sys.rst.eq(0)
+                    )
                 )
-            )
-        ]
+            ]
+
         self.specials += [
             Instance("IDELAYCTRL",
                 p_SIM_DEVICE = "ULTRASCALE",
