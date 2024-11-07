@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#define SPI_FLASH_BLOCK_SIZE 256
+#define SPI_FLASH_BLOCK_SIZE 512
 #define CRC32_ERASED_FLASH	 0xFEA8A821
 
 int spiflash_freq_init(void);
