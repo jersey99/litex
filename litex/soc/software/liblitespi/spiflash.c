@@ -236,7 +236,7 @@ void spiflash_erase_range(uint32_t addr, uint32_t len)
 
 		while (spiflash_read_status_register() & 1) {
 			printf(".");
-			cdelay(CONFIG_CLOCK_FREQUENCY/25);
+			cdelay(CONFIG_CLOCK_FREQUENCY/10);
 		}
 		printf("\n");
 
