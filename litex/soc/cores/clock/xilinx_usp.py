@@ -141,7 +141,7 @@ class USPIDELAYCTRL(LiteXModule):
             Instance("IDELAYCTRL",
                 p_SIM_DEVICE = "ULTRASCALE",
                 i_REFCLK     = cd_ref.clk,
-                i_RST        = ic_reset if control_sys_reset else Signal(),
+                i_RST        = ic_reset,
                 o_RDY        = ic_ready),
             AsyncResetSynchronizer(self.cd_ic, ic_reset)
         ]
