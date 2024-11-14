@@ -278,7 +278,7 @@ class XilinxVivadoToolchain(GenericToolchain):
         # Add constraints
         tcl.append("\n# Add constraints\n")
         tcl.append(f"read_xdc {self._build_name}.xdc")
-        tcl.append(f"set_property PROCESSING_ORDER EARLY [get_files {self._build_name}.xdc]")
+        # tcl.append(f"set_property PROCESSING_ORDER EARLY [get_files {self._build_name}.xdc]")
 
         # Add pre-synthesis commands
         tcl.append("\n# Add pre-synthesis commands\n")
