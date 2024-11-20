@@ -286,7 +286,8 @@ class Builder:
             csr_csv_contents = export.get_csr_csv(
                 csr_regions = self.soc.csr_regions,
                 constants   = self.soc.constants,
-                mem_regions = self.soc.mem_regions)
+                mem_regions = self.soc.mem_regions,
+                csr_paging  = self.soc.csr.paging)
             write_to_file(os.path.realpath(self.csr_csv), csr_csv_contents)
 
         # SVD Export.
