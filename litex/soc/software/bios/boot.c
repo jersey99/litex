@@ -337,7 +337,20 @@ const char *filename, char *buffer)
 	return size;
 }
 
+static int copy_file_from_tftp_to_flash(unsigned int ip, unsigned short server_port,
+const char *filename, char *buffer)
+{
+	int size;
+	printf("Copying %s to %p... ", filename, buffer);
+	size = tftp_get_chunked(ip, server_port, filename, buffer, spiflash_write_stream);
+	if(size > 0)
+		printf("(%d bytes)", size);
+	printf("\n");
+	return size;
+}
+
 uint8_t get_and_program_fpga = 0;
+uint8_t get_and_program_id = 0;
 
 static void listener_callback(uint32_t src_ip, uint16_t src_port,
     uint16_t dst_port, void *_data, unsigned int length)
@@ -346,7 +359,10 @@ static void listener_callback(uint32_t src_ip, uint16_t src_port,
 	printf("Got something\n");
 	if(length != 11) return;
 	if(dst_port != 0x4c44) return;
-	if(strncmp(data, "sfb_program", 11) == 0) {
+	if(strncmp(data, "sfb_program_id", 14) == 0) {
+	  get_and_program_id = 1;
+	}
+	if(strncmp(data, "sfb_program_fpga", 16) == 0) {
 	  get_and_program_fpga = 1;
 	}
 }
@@ -361,43 +377,59 @@ void netload_fpga(void) {
   udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], last_byte_local_ip));
   udp_set_callback((udp_callback) listener_callback);
   while (1) {
-    while (get_and_program_fpga != 1) {
+    while ((get_and_program_id != 1) && (get_and_program_fpga != 1)) {
       udp_service();
       _counter ++;
       if (_counter % 1000000 == 0)
 	printf(".\n");
     }
-    size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
-				      TFTP_SERVER_PORT, "board_id", (void *)(MAIN_RAM_BASE + 0x3fc0000));
-    if (size <= 0) {
-      printf("no board_id file found\n");
-    } else {
-      printf("erasing board id sector");
-      spiflash_erase_range(0x3fc0000, 1);
-      printf("programming board id\n");
-      spiflash_write_stream(0x3fc0000, (uint8_t *)(MAIN_RAM_BASE + 0x3fc0000), 1);
-      printf("done!");
+    if (get_and_program_id) {
+      size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
+					TFTP_SERVER_PORT, "board_id", (void *)(MAIN_RAM_BASE));
+      if (size <= 0) {
+	printf("no board_id file found\n");
+      } else {
+	printf("erasing board id sector");
+	spiflash_erase_range(0x3fc0000, 1);
+	printf("programming board id\n");
+	spiflash_write_stream(0x3fc0000, (uint8_t *)(MAIN_RAM_BASE), 1);
+	printf("done!");
+      }
+      printf("Turning off SPI FLASH MMAP write enable\n");
+      spiflash_core_mmap_write_config_write(0);
+      printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
+      get_and_program_id = 0;
     }
-    printf("Turning off SPI FLASH MMAP write enable\n");
-    spiflash_core_mmap_write_config_write(0);
-    printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
+    if (get_and_program_fpga) {
 
-    size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
-				      TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
-    printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
-    printf("Setting MMAP to Write\n");
-    spiflash_core_mmap_write_config_write(1);
-    printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
-    if (size <= 0) {
-      printf("no bin file found\n");
-    } else {
+      printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
+      printf("Setting MMAP to Write\n");
+      spiflash_core_mmap_write_config_write(1);
+
       printf("erasing fpga image sectors\n");
-      spiflash_erase_range(0, size);
-      printf("now writing image to flash\n");
-      spiflash_write_stream(0, (uint8_t *)MAIN_RAM_BASE, size);
-      printf("done!\n");
+      spiflash_erase_range(0, 0x2faf080);  // Delete 50MB for now
+
+      size = copy_file_from_tftp_to_flash(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
+					  TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
+
+      printf("Turning off SPI FLASH MMAP write enable\n");
+      spiflash_core_mmap_write_config_write(0);
+      printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
+      get_and_program_fpga = 0;
     }
-    return;
+    /* printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read()); */
+    /* printf("Setting MMAP to Write\n"); */
+    /* spiflash_core_mmap_write_config_write(1); */
+    /* printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read()); */
+    /* if (size <= 0) { */
+    /*   printf("no bin file found\n"); */
+    /* } else { */
+    /*   printf("erasing fpga image sectors\n"); */
+    /*   spiflash_erase_range(0, size); */
+    /*   printf("now writing image to flash\n"); */
+    /*   spiflash_write_stream(0, (uint8_t *)MAIN_RAM_BASE, size); */
+    /*   printf("done!\n"); */
+    /* } */
   }
 }
 

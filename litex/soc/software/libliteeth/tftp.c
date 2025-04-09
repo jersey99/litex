@@ -89,6 +89,7 @@ static int transfer_finished;
 static uint8_t *dst_buffer;
 static int last_ack; /* signed, so we can use -1 */
 static uint16_t data_port;
+static flash_write_callback flash_writer; // Store the flash write callback
 
 static void rx_callback(uint32_t src_ip, uint16_t src_port,
     uint16_t dst_port, void *_data, unsigned int length)
@@ -133,6 +134,113 @@ static void rx_callback(uint32_t src_ip, uint16_t src_port,
 		transfer_finished = 1;
 	}
 }
+
+static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
+    uint16_t dst_port, void *_data, unsigned int length)
+{
+	uint8_t *data = _data;
+	uint16_t opcode;
+	uint16_t block;
+	int i;
+	uint32_t offset;
+
+	if(length < 4) return;
+	if(dst_port != PORT_IN) return;
+	opcode = data[0] << 8 | data[1];
+	block = data[2] << 8 | data[3];
+
+	if(opcode == TFTP_ACK) { /* Acknowledgement */
+		data_port = src_port;
+		last_ack = block;
+		return;
+	}
+
+	if (opcode == TFTP_OACK) { /* Option Acknowledgement */
+		packet_data = udp_get_tx_buffer();
+		length = format_ack(packet_data, 0);
+		udp_send(PORT_IN, src_port, length);
+		return;
+	}
+
+	if(block < 1) return;
+
+	if(opcode == TFTP_DATA) { /* Data */
+		length -= 4;
+		offset = (block-1)*BLOCK_SIZE;
+
+		if (flash_writer(offset, &data[4], length) != length) {
+		    total_length = -1;
+		    transfer_finished = 1;
+		    return;
+		  }
+		total_length += length;
+
+		if(length < BLOCK_SIZE)
+		  transfer_finished = 1;
+
+		packet_data = udp_get_tx_buffer();
+		length = format_ack(packet_data, block);
+		udp_send(PORT_IN, src_port, length);
+	}
+
+	if(opcode == TFTP_ERROR) { /* Error */
+		total_length = -1;
+		transfer_finished = 1;
+	}
+}
+
+int tftp_get_chunked(uint32_t ip, uint16_t server_port, const char *filename,
+    void *buffer, flash_write_callback write_callback) {
+    int len;
+    int tries;
+    int i;
+
+    if (!udp_arp_resolve(ip)) {
+        return -1;
+    }
+
+    udp_set_callback((udp_callback) rx_flash_write_callback);
+    flash_writer = write_callback; // Store the callback
+
+    total_length = 0;
+    transfer_finished = 0;
+    tries = 5;
+
+    while (1) {
+        packet_data = udp_get_tx_buffer();
+        len = format_request(packet_data, TFTP_RRQ, filename); // Assuming you have format_request
+        udp_send(PORT_IN, server_port, len);
+
+        for (i = 0; i < 2000000; i++) {
+            udp_service();
+            if ((total_length > 0) || transfer_finished) break;
+        }
+
+        if ((total_length > 0) || transfer_finished) break;
+
+        tries--;
+        if (tries == 0) {
+            udp_set_callback(NULL);
+            flash_writer = NULL; // Clear the callback
+            return -1;
+        }
+    }
+
+    i = 12000000;
+    while (!transfer_finished) {
+        if (i-- == 0) {
+            udp_set_callback(NULL);
+            flash_writer = NULL;
+            return -1;
+        }
+        udp_service();
+    }
+
+    udp_set_callback(NULL);
+    flash_writer = NULL;
+    return total_length;
+}
+
 
 int tftp_get(uint32_t ip, uint16_t server_port, const char *filename,
     void *buffer)
