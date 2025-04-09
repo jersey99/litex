@@ -357,7 +357,7 @@ static void listener_callback(uint32_t src_ip, uint16_t src_port,
 {
 	char *data = _data;
 	printf("Got something\n");
-	if((length != 14) || (length != 16)) return;
+	if((length != 14) && (length != 16)) return;
 	if(dst_port != 0x4c44) return;
 	if(strncmp(data, "sfb_program_id", 14) == 0) {
 	  get_and_program_id = 1;
