@@ -144,6 +144,7 @@ static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
 	int i;
 	uint32_t offset;
 
+	printf("f");
 	if(length < 4) return;
 	if(dst_port != PORT_IN) return;
 	opcode = data[0] << 8 | data[1];
@@ -169,7 +170,6 @@ static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
 		offset = (block-1)*BLOCK_SIZE;
 
 		if (flash_writer(offset, &data[4], length) != length) {
-		  printf("flash writer returned bad value, %d\n", length);
 		    total_length = -1;
 		    transfer_finished = 1;
 		    return;
