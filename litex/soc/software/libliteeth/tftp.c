@@ -229,10 +229,9 @@ int tftp_get_chunked(uint32_t ip, uint16_t server_port, const char *filename,
         }
     }
 
-    i = 12000000;
+    i = 24000000;
     while (!transfer_finished) {
         if (i-- == 0) {
-	  printf("timeout\n");
             udp_set_callback(NULL);
             flash_writer = NULL;
             return -1;
