@@ -174,7 +174,6 @@ static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
 		    transfer_finished = 1;
 		    return;
 		  }
-		printf("written: %d, %d\n", length, total_length);
 		total_length += length;
 
 		if(length < BLOCK_SIZE)
@@ -186,7 +185,6 @@ static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
 	}
 
 	if(opcode == TFTP_ERROR) { /* Error */
-		printf("tftp error\n");
 		total_length = -1;
 		transfer_finished = 1;
 	}
@@ -229,7 +227,7 @@ int tftp_get_chunked(uint32_t ip, uint16_t server_port, const char *filename,
         }
     }
 
-    i = 24000000;
+    i = 100000000;
     while (!transfer_finished) {
         if (i-- == 0) {
             udp_set_callback(NULL);
