@@ -173,7 +173,7 @@ static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
 		    transfer_finished = 1;
 		    return;
 		  }
-		printf("written: %d\n", total_length);
+		printf("written: %d, %d\n", length, total_length);
 		total_length += length;
 
 		if(length < BLOCK_SIZE)

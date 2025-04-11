@@ -381,7 +381,7 @@ void netload_fpga(void) {
       udp_service();
       _counter ++;
       if (_counter % 1000000 == 0)
-	printf(".\n");
+	printf(".");
     }
     if (get_and_program_id) {
       size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
