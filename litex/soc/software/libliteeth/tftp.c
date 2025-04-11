@@ -186,6 +186,7 @@ static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
 	}
 
 	if(opcode == TFTP_ERROR) { /* Error */
+		printf("tftp error\n");
 		total_length = -1;
 		transfer_finished = 1;
 	}
