@@ -214,7 +214,7 @@ int tftp_get_chunked(uint32_t ip, uint16_t server_port, const char *filename,
         len = format_request(packet_data, TFTP_RRQ, filename); // Assuming you have format_request
         udp_send(PORT_IN, server_port, len);
 
-        for (i = 0; i < 2000000; i++) {
+        for (i = 0; i < 3000000; i++) {
             udp_service();
             if ((total_length > 0) || transfer_finished) break;
         }
