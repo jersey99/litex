@@ -227,7 +227,7 @@ int tftp_get_chunked(uint32_t ip, uint16_t server_port, const char *filename,
         }
     }
 
-    i = 1000000000;
+    i = 2000000000;
     while (!transfer_finished) {
         if (i-- == 0) {
             udp_set_callback(NULL);

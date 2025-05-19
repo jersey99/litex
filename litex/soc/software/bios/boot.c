@@ -374,6 +374,7 @@ void netload_fpga(void) {
   last_byte_local_ip = *((uint8_t *)0x7fc0000) + 141;
 
   printf("netload_fpga\n");
+  macadr [5] = (unsigned char) last_byte_local_ip;
   udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], last_byte_local_ip));
   udp_set_callback((udp_callback) listener_callback);
   while (1) {
@@ -649,6 +650,8 @@ void netboot(int nb_params, char **params)
 
   uint8_t last_byte_local_ip = *((uint8_t *)0x7fc0000);
   last_byte_local_ip = *((uint8_t *)0x7fc0000) + 141;
+
+  macadr [5] = (unsigned char) last_byte_local_ip;
 
   if (last_byte_local_ip == 0xFF)
     last_byte_local_ip = 0;
