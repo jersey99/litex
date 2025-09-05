@@ -372,10 +372,14 @@ void netload_fpga(void) {
   int size = 0;
   uint8_t last_byte_local_ip = *((uint8_t *) 0x7fc0000);
   last_byte_local_ip = *((uint8_t *)0x7fc0000) + 141;
+  uint8_t subnet_byte = *((uint8_t *) 0x7fc0004);
+  subnet_byte = *((uint8_t *)0x7fc0004);
+
+  subnet_byte = (subnet_byte != 9) ? 8 : 9;
 
   printf("netload_fpga\n");
   macadr [5] = (unsigned char) last_byte_local_ip;
-  udp_start(macadr, IPTOINT(local_ip[0], local_ip[1], local_ip[2], last_byte_local_ip));
+  udp_start(macadr, IPTOINT(local_ip[0], subnet_byte, local_ip[2], last_byte_local_ip));
   udp_set_callback((udp_callback) listener_callback);
   while (1) {
     while ((get_and_program_id != 1) && (get_and_program_fpga != 1)) {
@@ -385,15 +389,18 @@ void netload_fpga(void) {
 	printf(".");
     }
     if (get_and_program_id) {
-      size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
-					TFTP_SERVER_PORT, "board_id", (void *)(MAIN_RAM_BASE));
+      size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], subnet_byte, remote_ip[2], remote_ip[3]),
+					TFTP_SERVER_PORT, "subnet_id_board_id", (void *)(MAIN_RAM_BASE));
+      printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
+      printf("Setting MMAP to Write\n");
+      spiflash_core_mmap_write_config_write(1);
       if (size <= 0) {
 	printf("no board_id file found\n");
       } else {
 	printf("erasing board id sector");
-	spiflash_erase_range(0x3fc0000, 1);
+	spiflash_erase_range(0x3fc0000, 5);
 	printf("programming board id\n");
-	spiflash_write_stream(0x3fc0000, (uint8_t *)(MAIN_RAM_BASE), 1);
+	spiflash_write_stream(0x3fc0000, (uint8_t *)(MAIN_RAM_BASE), 5);
 	printf("done!");
       }
       printf("Turning off SPI FLASH MMAP write enable\n");
@@ -410,7 +417,7 @@ void netload_fpga(void) {
       printf("erasing fpga image sectors\n");
       spiflash_erase_range(0, 0x2faf080);  // Delete 50MB for now
 
-      size = copy_file_from_tftp_to_flash(IPTOINT(remote_ip[0], remote_ip[1], remote_ip[2], remote_ip[3]),
+      size = copy_file_from_tftp_to_flash(IPTOINT(remote_ip[0], subnet_byte, remote_ip[2], remote_ip[3]),
 					  TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
 
       printf("Turning off SPI FLASH MMAP write enable\n");
