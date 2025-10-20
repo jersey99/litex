@@ -377,7 +377,7 @@ void netload_fpga(void) {
 
   subnet_byte = (subnet_byte != 9) ? 8 : 9;
 
-  printf("netload_fpga\n");
+  printf("netload_fpga subnet: %hhu ip last_byte: %hhu\n", subnet_byte, last_byte_local_ip);
   macadr [5] = (unsigned char) last_byte_local_ip;
   udp_start(macadr, IPTOINT(local_ip[0], subnet_byte, local_ip[2], last_byte_local_ip));
   udp_set_callback((udp_callback) listener_callback);
