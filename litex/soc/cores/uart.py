@@ -86,7 +86,7 @@ class RS232PHYTX(LiteXModule):
             # On Clock Phase Accumulator tick:
             If(clk_phase_accum.tick,
                 # Set TX data.
-                NextValue(pads.tx, data),
+                NextValue(pads.tx, data[0]),
                 # Increment Count.
                 NextValue(count, count + 1),
                 # Shift TX data.
@@ -202,14 +202,14 @@ def _get_uart_fifo(depth, sink_cd="sys", source_cd="sys"):
     else:
         return stream.SyncFIFO([("data", 8)], depth, buffered=True)
 
-def UARTPHY(pads, clk_freq, baudrate):
+def UARTPHY(pads, clk_freq, baudrate, with_dynamic_baudrate=False):
     # FT245 Asynchronous FIFO mode (baudrate ignored)
     if hasattr(pads, "rd_n") and hasattr(pads, "wr_n"):
         from litex.soc.cores.usb_fifo import FT245PHYAsynchronous
         return FT245PHYAsynchronous(pads, clk_freq)
     # RS232
     else:
-        return  RS232PHY(pads, clk_freq, baudrate)
+        return  RS232PHY(pads, clk_freq, baudrate, with_dynamic_baudrate=with_dynamic_baudrate)
 
 class UART(LiteXModule, UARTInterface):
     def __init__(self, phy=None,
@@ -222,8 +222,8 @@ class UART(LiteXModule, UARTInterface):
         self._rxempty = CSRStatus(description="RX FIFO Empty.")
 
         self.ev    = EventManager()
-        self.ev.tx = EventSourceProcess(edge="rising")
-        self.ev.rx = EventSourceProcess(edge="rising")
+        self.ev.tx = EventSourceLevel()
+        self.ev.rx = EventSourceLevel()
         self.ev.finalize()
 
         self._txempty = CSRStatus(description="TX FIFO Empty.")
@@ -236,6 +236,7 @@ class UART(LiteXModule, UARTInterface):
         # PHY
         # ---
         if phy is not None:
+            self.phy = phy
             self.comb += phy.source.connect(self.sink)
             self.comb += self.source.connect(phy.sink)
 
@@ -267,7 +268,7 @@ class UART(LiteXModule, UARTInterface):
 
             # FIFO --> CSR.
             self._rxtx.w.eq(rx_fifo.source.data),
-            rx_fifo.source.ready.eq(self.ev.rx.clear | (rx_fifo_rx_we & self._rxtx.we)),
+            rx_fifo.source.ready.eq(self._rxtx.we if rx_fifo_rx_we else self.ev.rx.clear),
 
             # Status.
             self._rxempty.status.eq(~rx_fifo.source.valid),

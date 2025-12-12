@@ -32,7 +32,7 @@ class XilinxPlatform(GenericPlatform):
         "xcau", "xcku", "xcvu", "xczu"
     ]
 
-    def __init__(self, *args, toolchain="ise", **kwargs):
+    def __init__(self, *args, toolchain="ise", device_image_arch=None, **kwargs):
         GenericPlatform.__init__(self, *args, **kwargs)
         self.edifs = set()
         self.ips   = {}
@@ -41,7 +41,7 @@ class XilinxPlatform(GenericPlatform):
             self.toolchain = ise.XilinxISEToolchain()
         elif toolchain == "vivado":
             from litex.build.xilinx import vivado
-            self.toolchain = vivado.XilinxVivadoToolchain()
+            self.toolchain = vivado.XilinxVivadoToolchain(device_image_arch=device_image_arch)
         elif toolchain == "symbiflow" or toolchain == "f4pga":
             from litex.build.xilinx import f4pga
             self.toolchain = f4pga.F4PGAToolchain()
@@ -50,6 +50,8 @@ class XilinxPlatform(GenericPlatform):
             self.toolchain = yosys_nextpnr.XilinxYosysNextpnrToolchain(toolchain)
         else:
             raise ValueError(f"Unknown toolchain {toolchain}")
+        if device_image_arch is not None:
+            self._bitstream_ext["sram"] = ".pdi"
 
     def add_edif(self, filename):
         self.edifs.add((os.path.abspath(filename)))
@@ -83,6 +85,8 @@ class XilinxPlatform(GenericPlatform):
         if self.device[:4] == "xcku":
             so.update(common.xilinx_us_special_overrides)
         if self.device[:4] == "xcau":
+            so.update(common.xilinx_us_special_overrides)
+        if self.device[:4] == "xczu":
             so.update(common.xilinx_us_special_overrides)
         so.update(special_overrides)
         return GenericPlatform.get_verilog(self, *args,

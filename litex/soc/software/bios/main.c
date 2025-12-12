@@ -65,7 +65,7 @@ static void boot_sequence(void)
 #ifdef ROM_BOOT_ADDRESS
 	romboot();
 #endif
-#if defined(CSR_SPISDCARD_BASE) || defined(CSR_SDCARD_CORE_BASE)
+#if defined(CSR_SPISDCARD_BASE) || defined(CSR_SDCARD_BASE)
 	sdcardboot();
 #endif
 #if defined(CSR_SATA_SECTOR2MEM_BASE)
@@ -112,7 +112,7 @@ __attribute__((__used__)) int main(int i, char **c)
 	printf("\e[1m     /____/_/\\__/\\__/_/|_|\e[0m\n");
 	printf("\e[1m   Build your hardware, easily!\e[0m\n");
 	printf("\n");
-	printf(" (c) Copyright 2012-2024 Enjoy-Digital\n");
+	printf(" (c) Copyright 2012-2025 Enjoy-Digital\n");
 	printf(" (c) Copyright 2007-2015 M-Labs\n");
 	printf("\n");
 #ifndef CONFIG_BIOS_NO_BUILD_TIME
@@ -136,8 +136,13 @@ __attribute__((__used__)) int main(int i, char **c)
 		CONFIG_BUS_STANDARD,
 		CONFIG_BUS_DATA_WIDTH,
 		(1 << (CONFIG_BUS_ADDRESS_WIDTH - 30)));
-	printf("\e[1mCSR\e[0m:\t\t%d-bit data\n",
+	printf("\e[1mCSR\e[0m:\t\t%d-bit data ",
 		CONFIG_CSR_DATA_WIDTH);
+#ifdef CONFIG_CSR_ORDERING_BIG
+	printf("big ordering\n");
+#else
+	printf("little ordering\n");
+#endif
 	printf("\e[1mROM\e[0m:\t\t");
 	print_size(ROM_SIZE);
 	printf("\n");
@@ -149,7 +154,7 @@ __attribute__((__used__)) int main(int i, char **c)
 	print_size(CONFIG_L2_SIZE);
 	printf("\n");
 #endif
-#ifdef CSR_SPIFLASH_CORE_BASE
+#ifdef SPIFLASH_MODULE_TOTAL_SIZE
 	printf("\e[1mFLASH\e[0m:\t\t");
 	print_size(SPIFLASH_MODULE_TOTAL_SIZE);
 	printf("\n");
@@ -181,14 +186,16 @@ __attribute__((__used__)) int main(int i, char **c)
     hyperram_init();
 #endif
 
-#if defined(CSR_ETHMAC_BASE) || defined(MAIN_RAM_BASE) || defined(CSR_SPIFLASH_CORE_BASE)
+#if defined(CSR_ETHMAC_BASE) || defined(MAIN_RAM_BASE) || defined(CSR_SPIFLASH_BASE)
     printf("--========== \e[1mInitialization\e[0m ============--\n");
 #ifdef CSR_ETHMAC_BASE
 	eth_init();
+	net_init();
+	set_idle_hook(udp_service);
 #endif
 
 	/* Initialize and test SPIRAM */
-#ifdef CSR_SPIRAM_CORE_BASE
+#ifdef CSR_SPIRAM_BASE
 	spiram_init();
 #endif
 	printf("\n");
@@ -210,7 +217,7 @@ __attribute__((__used__)) int main(int i, char **c)
 #endif
 
 	/* Initialize and test SPIFLASH */
-#ifdef CSR_SPIFLASH_CORE_BASE
+#ifdef CSR_SPIFLASH_BASE
 	spiflash_init();
 #endif
 	printf("\n");

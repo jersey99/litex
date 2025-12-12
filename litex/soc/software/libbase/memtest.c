@@ -85,7 +85,7 @@ int memtest_bus(unsigned int *addr, unsigned long size)
 	}
 
 	/* Flush caches */
-	flush_cpu_dcache();
+	flush_cpu_dcache_range(addr, size);
 	flush_l2_cache();
 
 	/* Read/Verify One/Zero pattern */
@@ -106,7 +106,7 @@ int memtest_bus(unsigned int *addr, unsigned long size)
 	}
 
 	/* Flush caches */
-	flush_cpu_dcache();
+	flush_cpu_dcache_range(addr, size);
 	flush_l2_cache();
 
 	/* Read/Verify One/Zero pattern */
@@ -145,7 +145,7 @@ int memtest_addr(unsigned int *addr, unsigned long size, int random)
 	}
 
 	/* Flush caches */
-	flush_cpu_dcache();
+	flush_cpu_dcache_range(addr, size);
 	flush_l2_cache();
 
 	/* Read/Verify datas */
@@ -214,7 +214,7 @@ int memtest_data(unsigned int *addr, unsigned long size, int random, struct memt
 	}
 
 	/* Flush caches */
-	flush_cpu_dcache();
+	flush_cpu_dcache_range(addr, size);
 	flush_l2_cache();
 
 	/* Read/Verify datas */
@@ -309,7 +309,7 @@ void memspeed(unsigned int *addr, unsigned long size, bool read_only, bool rando
 	}
 
 	/* flush caches */
-	flush_cpu_dcache();
+	flush_cpu_dcache_range(addr, size);
 	flush_l2_cache();
 
 	/* Measure Read speed */
@@ -318,11 +318,24 @@ void memspeed(unsigned int *addr, unsigned long size, bool read_only, bool rando
 	start = timer0_value_read();
 
 	int num = size/sz;
+	int ones_cnt = 0;
+
+	for(int check = num; check != 0; check = ((check >> 1) & INT_MAX)) {
+		if(check & 0x1) {
+			ones_cnt += 1;
+		}
+	}
+
+	bool power_of_two = (ones_cnt == 1);
 
 	if (random) {
 		for (i = 0; i < size/sz; i++) {
 			seed_32 = seed_to_data_32(seed_32, i);
-			data = array[seed_32 % num];
+			if(power_of_two) {
+				data = array[seed_32 & (num - 1)];
+			} else {
+				data = array[seed_32 % num];
+			}
 		}
 	} else {
 		ptr = array;

@@ -84,7 +84,6 @@ class InferedSDRIO(Module):
 
 class SDRIO(Special):
     def __init__(self, i, o, clk=None):
-        assert len(i) == len(o) == 1
         Special.__init__(self)
         self.i            = wrap(i)
         self.o            = wrap(o)
@@ -92,6 +91,7 @@ class SDRIO(Special):
             clk = ClockSignal()
         self.clk          = wrap(clk)
         self.clk_domain   = None if not hasattr(clk, "cd") else clk.cd
+        assert len(self.i) == len(self.o)
 
     def iter_expressions(self):
         yield self, "i"  , SPECIAL_INPUT
@@ -102,7 +102,6 @@ class SDRIO(Special):
     def lower(dr):
         return InferedSDRIO(dr.i, dr.o, dr.clk)
 
-
 class SDRInput(SDRIO):  pass
 class SDROutput(SDRIO): pass
 
@@ -110,29 +109,34 @@ class SDROutput(SDRIO): pass
 
 class InferedSDRTristate(Module):
     def __init__(self, io, o, oe, i, clk):
-        _o  = Signal()
-        _oe = Signal()
-        _i  = Signal()
+        _o  = Signal().like(o)
+        _oe = Signal().like(oe)
+        _i  = Signal().like(i) if i is not None else None
         self.specials   += SDROutput(o, _o, clk)
-        self.specials   += SDRInput(_i, i, clk)
+        if _i is not None:
+            self.specials   += SDRInput(_i, i, clk)
         self.submodules += InferedSDRIO(oe, _oe, clk)
         self.specials   += Tristate(io, _o, _oe, _i)
 
 class SDRTristate(Special):
-    def __init__(self, io, o, oe, i, clk=None):
-        assert len(i) == len(o) == len(oe)
+    def __init__(self, io, o, oe, i=None, clk=None):
         Special.__init__(self)
         self.io  = wrap(io)
         self.o   = wrap(o)
         self.oe  = wrap(oe)
-        self.i   = wrap(i)
+        self.i   = wrap(i) if i is not None else None
         self.clk = wrap(clk) if clk is not None else ClockSignal()
+        if self.i is not None:
+            assert len(self.i) == len(self.o) == len(self.oe)
+        else:
+            assert len(self.o) == len(self.oe)
 
     def iter_expressions(self):
         yield self, "io" , SPECIAL_INOUT
         yield self, "o"  , SPECIAL_INPUT
         yield self, "oe" , SPECIAL_INPUT
-        yield self, "i"  , SPECIAL_OUTPUT
+        if self.i is not None:
+            yield self, "i"  , SPECIAL_OUTPUT
         yield self, "clk", SPECIAL_INPUT
 
     @staticmethod
@@ -185,40 +189,52 @@ class DDROutput(Special):
 # DDR Tristate -------------------------------------------------------------------------------------
 
 class InferedDDRTristate(Module):
-    def __init__(self, io, o1, o2, oe1, oe2, i1, i2, clk):
-        _o  = Signal()
-        _oe = Signal()
-        _i  = Signal()
+    def __init__(self, io, o1, o2, oe1, oe2, i1, i2, clk, i_async):
+        _o  = Signal().like(o1)
+        _oe = Signal().like(oe1)
+        _i  = Signal().like(_o) if i1 is not None and i2 is not None else None
         self.specials += DDROutput(o1, o2, _o, clk)
-        self.specials += DDROutput(oe1, oe2, _oe, clk)
-        self.specials += DDRInput(_i, i1, i2, clk)
+        self.specials += DDROutput(oe1, oe2, _oe, clk) if oe2 is not None else SDROutput(oe1, _oe, clk)
+        if _i is not None:
+            self.specials += DDRInput(_i, i1, i2, clk)
+            if i_async is not None:
+                self.comb += i_async.eq(_i)
+        elif i_async is not None:
+            _i = i_async
         self.specials += Tristate(io, _o, _oe, _i)
 
 class DDRTristate(Special):
-    def __init__(self, io, o1, o2, oe1, oe2, i1, i2, clk=None):
+    def __init__(self, io, o1, o2, oe1, oe2=None, i1=None, i2=None, clk=None, i_async=None):
         Special.__init__(self)
-        self.io  = io
-        self.o1  = o1
-        self.o2  = o2
-        self.oe1 = oe1
-        self.oe2 = oe2
-        self.i1  = i1
-        self.i2  = i2
-        self.clk = clk if clk is not None else ClockSignal()
+        self.io      = io
+        self.o1      = o1
+        self.o2      = o2
+        self.oe1     = oe1
+        self.oe2     = oe2
+        self.i1      = i1
+        self.i2      = i2
+        self.clk     = clk     if     clk is not None else ClockSignal()
+        self.i_async = i_async
 
     def iter_expressions(self):
-        yield self, "io" , SPECIAL_INOUT
-        yield self, "o1" , SPECIAL_INPUT
-        yield self, "o2" , SPECIAL_INPUT
-        yield self, "oe1", SPECIAL_INPUT
-        yield self, "oe2", SPECIAL_INPUT
-        yield self, "i1" , SPECIAL_OUTPUT
-        yield self, "i2" , SPECIAL_OUTPUT
-        yield self, "clk", SPECIAL_INPUT
+        attr_context = [
+            ("io" ,     SPECIAL_INOUT),
+            ("o1" ,     SPECIAL_INPUT),
+            ("o2" ,     SPECIAL_INPUT),
+            ("oe1",     SPECIAL_INPUT),
+            ("oe2",     SPECIAL_INPUT),
+            ("i1" ,     SPECIAL_OUTPUT),
+            ("i2" ,     SPECIAL_OUTPUT),
+            ("clk",     SPECIAL_INPUT),
+            ("i_async", SPECIAL_OUTPUT)
+        ]
+        for attr, target_context in attr_context:
+            if getattr(self, attr) is not None:
+                yield self, attr, target_context
 
     @staticmethod
     def lower(dr):
-        return InferedDDRTristate(dr.io, dr.o1, dr.o2, dr.oe1, dr.oe2, dr.i1, dr.i2, dr.clk)
+        return InferedDDRTristate(dr.io, dr.o1, dr.o2, dr.oe1, dr.oe2, dr.i1, dr.i2, dr.clk, dr.i_async)
 
 # Clock Reset Generator ----------------------------------------------------------------------------
 

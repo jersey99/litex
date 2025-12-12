@@ -14,6 +14,7 @@ import math
 from shutil import which
 
 from migen.fhdl.structure import _Fragment
+from migen.fhdl.simplify import FullMemoryWE
 
 from litex.build.generic_platform import Pins, IOStandard, Misc
 from litex.build.generic_toolchain import GenericToolchain
@@ -23,21 +24,30 @@ from litex.build import tools
 
 class AlteraQuartusToolchain(GenericToolchain):
     attr_translate = {
-        "keep": ("keep", 1),
+        "keep":    ("keep", 1),
+        "noprune": ("noprune", 1),
     }
 
     def __init__(self):
         super().__init__()
         self._synth_tool             = "quartus_map"
+        self._conv_tool              = "quartus_cpf"
+        self.clock_constraints       = []
         self.additional_sdc_commands = []
         self.additional_qsf_commands = []
         self.cst                     = []
 
     def build(self, platform, fragment,
         synth_tool = "quartus_map",
+        conv_tool  = "quartus_cpf",
         **kwargs):
 
         self._synth_tool = synth_tool
+        self._conv_tool  = conv_tool
+
+        if not platform.device.startswith("10M"):
+            # Apply FullMemoryWE on Design (Quartus does not infer memories correctly otherwise).
+            FullMemoryWE()(fragment)
 
         return GenericToolchain.build(self, platform, fragment, **kwargs)
 
@@ -114,7 +124,11 @@ class AlteraQuartusToolchain(GenericToolchain):
                 sdc.append(tpl.format(name=name, clk=clk_sig, period=str(period)))
 
         # Enable automatical constraint generation for PLLs
-        sdc.append("derive_pll_clocks -use_net_name")
+        if not self.platform.device[:3] in ["A5E", "A3C"]:
+            sdc.append("derive_pll_clocks -use_net_name")
+
+        # Any additional clock constraints like "create_generated_clock" etc.
+        sdc += self.clock_constraints
 
         # False path constraints
         for from_, to in sorted(self.false_paths, key=lambda x: (x[0].duid, x[1].duid)):
@@ -192,21 +206,38 @@ class AlteraQuartusToolchain(GenericToolchain):
 quartus_fit --read_settings_files=off --write_settings_files=off {build_name} -c {build_name}
 quartus_asm --read_settings_files=off --write_settings_files=off {build_name} -c {build_name}
 quartus_sta {build_name} -c {build_name}"""
+
+        # Create .rbf.
         if self.platform.create_rbf:
             if sys.platform in ["win32", "cygwin"]:
               script_contents += """
 if exist "{build_name}.sof" (
-    quartus_cpf -c {build_name}.sof {build_name}.rbf
+    {conv_tool} -c {build_name}.sof {build_name}.rbf
 )
 """
             else:
               script_contents += """
 if [ -f "{build_name}.sof" ]
 then
-    quartus_cpf -c {build_name}.sof {build_name}.rbf
+    {conv_tool} -c {build_name}.sof {build_name}.rbf
 fi
 """
-        script_contents = script_contents.format(build_name=build_name, synth_tool=self._synth_tool)
+        # Create .svf.
+        if self.platform.create_svf:
+            if sys.platform in ["win32", "cygwin"]:
+              script_contents += """
+if exist "{build_name}.sof" (
+    {conv_tool} -c -q \"12.0MHz\" -g 3.3 -n p {build_name}.sof {build_name}.svf
+)
+"""
+            else:
+              script_contents += """
+if [ -f "{build_name}.sof" ]
+then
+    {conv_tool} -c -q \"12.0MHz\" -g 3.3 -n p {build_name}.sof {build_name}.svf
+fi
+"""
+        script_contents = script_contents.format(build_name=build_name, synth_tool=self._synth_tool, conv_tool=self._conv_tool)
         tools.write_to_file(script_file, script_contents, force_unix=True)
 
         return script_file
@@ -228,8 +259,10 @@ fi
 def fill_args(parser):
     toolchain_group = parser.add_argument_group(title="Quartus toolchain options")
     toolchain_group.add_argument("--synth-tool", default="quartus_map", help="Synthesis mode (quartus_map or quartus_syn).")
+    toolchain_group.add_argument("--conv-tool",  default="quartus_cpf", help="Quartus Prime Convert_programming_file (quartus_cpf or quartus_pfg).")
 
 def get_argdict(args):
     return {
         "synth_tool" : args.synth_tool,
+        "conv_tool"  : args.conv_tool,
     }

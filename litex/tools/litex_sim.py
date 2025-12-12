@@ -10,6 +10,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import sys
+import subprocess
 import argparse
 
 from migen import *
@@ -28,10 +29,7 @@ from litex.soc.cores.gpio    import GPIOTristate
 from litex.soc.cores.cpu     import CPUS
 from litex.soc.cores.video   import VideoGenericPHY
 
-from litedram           import modules as litedram_modules
-from litedram.modules   import parse_spd_hexdump
-from litedram.phy.model import sdram_module_nphases, get_sdram_phy_settings
-from litedram.phy.model import SDRAMPHYModel
+from litedram.phy.model import get_sdram_phy_settings
 
 from liteeth.common             import *
 from liteeth.phy.gmii           import LiteEthPHYGMII
@@ -44,8 +42,6 @@ from liteeth.core.udp           import LiteEthUDP
 from liteeth.core.icmp          import LiteEthICMP
 from liteeth.core               import LiteEthUDPIPCore
 from liteeth.frontend.etherbone import LiteEthEtherbone
-
-from litescope import LiteScopeAnalyzer
 
 # IOs ----------------------------------------------------------------------------------------------
 
@@ -159,32 +155,36 @@ class Platform(SimPlatform):
 
 class SimSoC(SoCCore):
     def __init__(self,
-        with_sdram            = False,
-        with_sdram_bist       = False,
-        with_ethernet         = False,
-        ethernet_phy_model    = "sim",
-        with_etherbone        = False,
-        etherbone_mac_address = 0x10e2d5000001,
-        etherbone_ip_address  = "192.168.1.51",
-        with_analyzer         = False,
-        sdram_module          = "MT48LC16M16",
-        sdram_init            = [],
-        sdram_data_width      = 32,
-        sdram_spd_data        = None,
-        sdram_verbosity       = 0,
-        with_i2c              = False,
-        with_sdcard           = False,
-        with_spi_flash        = False,
-        spi_flash_init        = [],
-        with_gpio             = False,
+        with_sdram             = False,
+        with_sdram_bist        = False,
+        with_ethernet          = False,
+        ethernet_phy_model     = "sim",
+        ethernet_local_ip      = "192.168.1.50",
+        ethernet_remote_ip     = "192.168.1.100",
+        with_etherbone         = False,
+        with_analyzer          = False,
+        sdram_module           = "MT48LC16M16",
+        sdram_init             = [],
+        sdram_data_width       = 32,
+        sdram_spd_data         = None,
+        sdram_verbosity        = 0,
+        with_i2c               = False,
+        with_sdcard            = False,
+        with_spi_flash         = False,
+        spi_flash_init         = [],
+        with_gpio              = False,
         with_video_framebuffer = False,
-        with_video_terminal = False,
-        with_video_colorbars = False,
-        sim_debug             = False,
-        trace_reset_on        = False,
-        with_jtag             = False,
+        with_video_terminal    = False,
+        with_video_colorbars   = False,
+        sim_debug              = False,
+        trace_reset_on         = False,
+        with_jtag              = False,
         **kwargs):
-        platform     = Platform()
+
+        # Platform ---------------------------------------------------------------------------------
+        platform = Platform()
+
+        # Parameters -------------------------------------------------------------------------------
         sys_clk_freq = int(1e6)
 
         # CRG --------------------------------------------------------------------------------------
@@ -204,6 +204,10 @@ class SimSoC(SoCCore):
 
         # SDRAM ------------------------------------------------------------------------------------
         if not self.integrated_main_ram_size and with_sdram:
+            from litedram           import modules as litedram_modules
+            from litedram.phy.model import sdram_module_nphases
+            from litedram.phy.model import SDRAMPHYModel
+
             sdram_clk_freq = int(100e6) # FIXME: use 100MHz timings
             if sdram_spd_data is None:
                 sdram_module_cls = getattr(litedram_modules, sdram_module)
@@ -248,12 +252,18 @@ class SimSoC(SoCCore):
         # Etherbone with optional Ethernet ---------------------------------------------------------
         if with_etherbone:
             self.add_etherbone(
-                phy         = self.ethphy,
-                ip_address  = etherbone_ip_address,
-                mac_address = etherbone_mac_address,
-                data_width  = 8,
-                with_ethmac = with_ethernet,
+                phy              = self.ethphy,
+                # Etherbone Parameters.
+                ip_address       = convert_ip(ethernet_local_ip) + int(with_ethernet), # +1 when both to avoid conflict.
+                mac_address      = 0x10e2d5000001,
+                data_width       = 8,
+                # Ethernet Parameters.
+                with_ethmac      = with_ethernet,
+                ethmac_address   = 0x10e2d5000000,
+                ethmac_local_ip  = ethernet_local_ip,
+                ethmac_remote_ip = ethernet_remote_ip,
             )
+
         # Ethernet only ----------------------------------------------------------------------------
         elif with_ethernet:
             # Ethernet MAC
@@ -346,6 +356,8 @@ class SimSoC(SoCCore):
 
         # Analyzer ---------------------------------------------------------------------------------
         if with_analyzer:
+            from litescope import LiteScopeAnalyzer
+
             analyzer_signals = [
                 # IBus (could also just added as self.cpu.ibus)
                 self.cpu.ibus.stb,
@@ -415,6 +427,13 @@ def sim_args(parser):
     parser.add_argument("--rom-init",             default=None,            help="ROM init file (.bin or .json).")
     parser.add_argument("--ram-init",             default=None,            help="RAM init file (.bin or .json).")
 
+
+    # UART.
+    parser.add_argument("--uart-tcp",      action="store_true",            help="Use serial2tcp external module for UART.")
+    parser.add_argument("--uart-tcp-port", type=int, default=1234,         help="TCP port for serial2tcp (default: 1234).")
+    parser.add_argument("--uart-pty",      action="store_true",            help="Create a PTY bridged to the UART TCP port (requires socat).")
+    parser.add_argument("--uart-pty-path", default="/tmp/litex_pty0",      help="Path for UART PTY (default: /tmp/litex_pty0).")
+
     # DRAM.
     parser.add_argument("--with-sdram",           action="store_true",     help="Enable SDRAM support.")
     parser.add_argument("--with-sdram-bist",      action="store_true",     help="Enable SDRAM BIST Generator/Checker modules.")
@@ -479,7 +498,25 @@ def main():
     # UART.
     if soc_kwargs["uart_name"] == "serial":
         soc_kwargs["uart_name"] = "sim"
-        sim_config.add_module("serial2console", "serial")
+        # TCP-based UART bridge (serial2tcp).
+        if args.uart_tcp or args.uart_pty:
+            port = args.uart_tcp_port
+            sim_config.add_module("serial2tcp", "serial", args={"port": port})
+            # PTY.
+            if args.uart_pty:
+                port     = args.uart_tcp_port
+                pty_path = args.uart_pty_path
+                cmd = ["socat", f"pty,link={pty_path},raw,echo=0", f"tcp:127.0.0.1:{port},forever,interval=0.1"]
+                try:
+                    socat_proc = subprocess.Popen(cmd)
+                    print(f"[litex_sim] UART PTY created at: {pty_path}")
+                except FileNotFoundError:
+                    print("[litex_sim] ERROR: 'socat' not found. Install socat or disable --uart-pty.")
+                except Exception as e:
+                    print(f"[litex_sim] ERROR: Failed to start socat for UART PTY: {e}")
+        # Console (stdin/stdout) UART bridge (serial2console).
+        else:
+            sim_config.add_module("serial2console", "serial")
 
     # Create config SoC that will be used to prepare/configure real one.
     conf_soc = SimSoC(**soc_kwargs)
@@ -503,6 +540,8 @@ def main():
             )
             ram_boot_address = get_boot_address(args.ram_init)
     elif args.with_sdram:
+        from litedram.modules   import parse_spd_hexdump
+
         assert args.ram_init is None
         soc_kwargs["sdram_module"]     = args.sdram_module
         soc_kwargs["sdram_data_width"] = int(args.sdram_data_width)
@@ -546,6 +585,8 @@ def main():
         with_sdram_bist        = args.with_sdram_bist,
         with_ethernet          = args.with_ethernet,
         ethernet_phy_model     = args.ethernet_phy_model,
+        ethernet_local_ip      = args.local_ip,
+        ethernet_remote_ip     = args.remote_ip,
         with_etherbone         = args.with_etherbone,
         with_analyzer          = args.with_analyzer,
         with_i2c               = args.with_i2c,
@@ -564,7 +605,7 @@ def main():
         if ram_boot_address == 0:
             ram_boot_address = conf_soc.mem_map["main_ram"]
         soc.add_constant("ROM_BOOT_ADDRESS", ram_boot_address)
-    if args.with_ethernet:
+    if args.with_ethernet and (not args.with_etherbone): # FIXME: Remove.
         for i in range(4):
             soc.add_constant("LOCALIP{}".format(i+1), int(args.local_ip.split(".")[i]))
         for i in range(4):

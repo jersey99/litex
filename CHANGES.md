@@ -1,15 +1,238 @@
-[> Changes since 2024.08
-------------------------
-	[> Fixed
-	--------
+[> 2025.08, released on October 3th 2025
+----------------------------------------
 
-	[> Added
-	--------
-	- cpu/zynqmp   : Added SGMII support via PL andoptional PTP (#2095).
-	- liteeth/phy  : Improved 1000BaseX/2500BaseX PCS/PHYs (https://github.com/enjoy-digital/liteeth/pull/174).
+[> Fixed
+--------
+- **tools/json2dts**                               : Fixed sdcard support in device tree generation ([PR #2292](https://github.com/enjoy-digital/litex/pull/2292), [29a8c3cdb](https://github.com/enjoy-digital/litex/commit/29a8c3cdb)).
+- **software/litesdcard**                          : Fixed warnings in litesdcard software ([PR #2273](https://github.com/enjoy-digital/litex/pull/2273)).
+- **cpu/ibex**                                     : Fixed missing add_sources calls ([PR #2268](https://github.com/enjoy-digital/litex/pull/2268)).
+- **tests/test_integration**                       : Fixed file mode to allow reading logs on boot failure ([PR #2264](https://github.com/enjoy-digital/litex/pull/2264)).
+- **build/efinix**                                 : Fixed programmer compatibility and bitstream file copying, added CLKOUT_DYNPHASE_EN support ([PR #2247](https://github.com/enjoy-digital/litex/pull/2247)).
+- **tools/litex_json2dts_linux**                   : Fixed USB OHCI DT naming (mac->usb) and L1 cache size reporting ([PR #2251](https://github.com/enjoy-digital/litex/pull/2251)).
+- **build/colognechip**                            : Fixed DDR inversion issue ([PR #2274](https://github.com/enjoy-digital/litex/pull/2274)).
+- **tests/test_integration**                       : Temporarily disabled coreblocks due to pipx issue ([bc25ed7fd](https://github.com/enjoy-digital/litex/commit/bc25ed7fd)).
+- **platforms/xilinx_zcu106**                      : Fixed user button pin according to user guide ([PR #681](https://github.com/litex-hub/litex-boards/pull/681)).
+- **targets/hyvision_pcie_opt01_revf**             : Fixed J9 pinout for correct board edge alignment ([PR #682](https://github.com/litex-hub/litex-boards/pull/682)).
+- **platforms/berkeleylab_marble**                 : Removed IOSTANDARD from mgtrefclk pins to resolve Vivado warnings ([3e77bc6](https://github.com/litex-hub/litex-boards/commit/3e77bc6)).
+- **litepcie/frontend/dma**                        : Added FIFO resets to LitePCIeDMABuffering to prevent incorrect behavior ([PR #148](https://github.com/enjoy-digital/litepcie/pull/148)).
+- **litesdcard/phy/SDPHYClocker**                  : Fixed clock divider logic for div 0,1,2,3,4,5,8 cases ([PR #40](https://github.com/enjoy-digital/litesdcard/pull/40)).
+- **soc/cores/naxriscv**                           : Fixed git submodule not being set to the right hash ([PR #2332](https://github.com/enjoy-digital/litex/pull/2332)).
+- **bios/isr**                                     : Removed warning for "no previous prototype for 'plic_init' [-Wmissing-prototypes]" ([PR #2333](https://github.com/enjoy-digital/litex/pull/2333)).
+- **tools/litex_json2dts_linux**                   : Fixed clint addition to DTS by checking memory map instead of CPU type ([PR #2335](https://github.com/enjoy-digital/litex/pull/2335)).
+- **soc/interconnect/axi**                         : Fixed AXIInterfaces initialization with correct id_width ([PR #2320](https://github.com/enjoy-digital/litex/pull/2320)).
+- **build/gowin/gowin.py**                         : Fixed WSL issue with Gowin toolchain detection ([PR #2308](https://github.com/enjoy-digital/litex/pull/2308)).
+- **build/efinix**                                 : Fixed get_pad_name_xml for Topaz ([PR #2297](https://github.com/enjoy-digital/litex/pull/2297)).
+- **build/io/efinix**                              : Fixed DDR Input timing ([PR #2311](https://github.com/enjoy-digital/litex/pull/2311)).
+- **build/altera/common**                          : Fixed Agilex5SDRTristateImpl parameters and reset synchronizer ([PR #2318](https://github.com/enjoy-digital/litex/pull/2318)).
+- **soc/cores/ram/efinix_hyperram**                : Fixed clkout frequency and TristateImpl for TSTriple ([PR #2295](https://github.com/enjoy-digital/litex/pull/2295)).
+- **build/vivado**                                 : Fixed synth_ip warning by switching to non-project mode ([PR #2294](https://github.com/enjoy-digital/litex/pull/2294)).
+- **build/vhd2v_converter**                        : Fixed mutable defaults in __init__ ([f8a1a213d](https://github.com/enjoy-digital/litex/commit/f8a1a213d)).
+- **soc/doc**                                      : Fixed CSR register calculation for little endian ordering ([PR #2270](https://github.com/enjoy-digital/litex/pull/2270)).
+- **build/[colognechip,gowin]/common**             : Fixed SDRInput parameters order in SDRTristateImpl ([PR #2328](https://github.com/enjoy-digital/litex/pull/2328)).
+- **soc/cores/clock/intel_agilex**                 : Fixed clkin_name if signal type is ClockSignal ([587b1b374](https://github.com/enjoy-digital/litex/commit/587b1b374)).
+- **bios/litedram**                                : Fixed indexes of csr_rd_buf_uint8 ([420591a1a](https://github.com/enjoy-digital/litex/commit/420591a1a)).
+- **litepcie/phy/xilinx_usp/m_axis_rc_adapt_512b** : Fixed cq/rc typo ([51da1ba](https://github.com/enjoy-digital/litepcie/commit/51da1ba)).
+- **litepcie/phy/s7pciephy**                       : Added false path constraint on pclk_sel signal ([44362da](https://github.com/enjoy-digital/litepcie/commit/44362da)).
+- **litei2c/phy**                                  : Fixed truncating complaint from toolchain ([6fbef5b](https://github.com/enjoy-digital/litei2c/commit/6fbef5b)).
+- **liteeth/phy/titanium_lvds_1000basex**          : Fixed regression on presented data to Decoder8b10bIdleChecker ([fec700b](https://github.com/enjoy-digital/liteeth/commit/fec700b)).
+- **platforms/berkeleylab_obsidian**               : Fixed configuration of SPI flash ([PR #692](https://github.com/litex-hub/litex-boards/pull/692)).
+- **platforms/colorlight_5a_75e**                  : Fixed typo in connectors ([PR #685](https://github.com/litex-hub/litex-boards/pull/685)).
+- **targets/arrow_axe5000**                        : Fixed call to Agilex5PLL after litex core changes ([PR #694](https://github.com/litex-hub/litex-boards/pull/694)).
 
-	[> Changed
-	----------
+[> Added
+--------
+- **sim/verilator**                                : Added state save and load functions for Verilator simulation ([PR #2261](https://github.com/enjoy-digital/litex/pull/2261)).
+- **build/xilinx/vivado**                          : Added Device Image (pdi) generation support for Vivado builds ([PR #2272](https://github.com/enjoy-digital/litex/pull/2272)).
+- **software/bios/liteeth**                        : Added ping command and BIOS support for responding to ping requests ([PR #2287](https://github.com/enjoy-digital/litex/pull/2287)).
+- **cores/cpu/vexiiriscv**                         : Added architecture details in human-readable name ([PR #2286](https://github.com/enjoy-digital/litex/pull/2286)).
+- **tools/json2dts_zephyr**                        : Added default IRQ priority of 1 for PLIC ([PR #2285](https://github.com/enjoy-digital/litex/pull/2285)).
+- **software/litesdcard**                          : Added support for changing PHY modes (x1, x4, x8) ([PR #2275](https://github.com/enjoy-digital/litex/pull/2275)).
+- **soc/cores/prbs**                               : Added errors_width parameter to improve timing in some designs ([bc6a6f015](https://github.com/enjoy-digital/litex/commit/bc6a6f015)).
+- **software/bios/liteeth/udp**                    : Added broadcast support ([PR #2263](https://github.com/enjoy-digital/litex/pull/2263)).
+- **tools/json2dts_zephyr**                        : Updated interrupt naming for SPI flash core ([PR #2271](https://github.com/enjoy-digital/litex/pull/2271)).
+- **soc/cores/spi**                                : Added interrupt support for LiteSPI and moved PHY to core for single CSR slot usage ([2438c558e](https://github.com/enjoy-digital/litex/commit/2438c558e), [befcbbc9b](https://github.com/enjoy-digital/litex/commit/befcbbc9b)).
+- **soc/cores/i2c**                                : Added interrupt support for LiteI2C ([3b4708db4](https://github.com/enjoy-digital/litex/commit/3b4708db4)).
+- **tests/test_integration**                       : Added ibex and vexiiriscv CPUs to boot tests ([d170f08dd](https://github.com/enjoy-digital/litex/commit/d170f08dd), [e3b8bf653](https://github.com/enjoy-digital/litex/commit/e3b8bf653)).
+- **build/tools**                                  : Added _tail_file function and tail_log parameter to subprocess_call_filtered for colored build log output ([f5e5514b3](https://github.com/enjoy-digital/litex/commit/f5e5514b3)).
+- **soc/integration**                              : Exposed check_duplicate argument in add_ip_address_constants and add_mac_address_constants ([PR #2259](https://github.com/enjoy-digital/litex/pull/2259)).
+- **build/lattice/icestorm**                       : Added support for pin pull-up configuration ([PR #2256](https://github.com/enjoy-digital/litex/pull/2256)).
+- **cores/usb_ohci**                               : Added InterruptPin class for standard IRQ allocation ([PR #2252](https://github.com/enjoy-digital/litex/pull/2252)).
+- **tools/litex_json2dts_linux**                   : Added local MAC address to ethernet device tree and L2 cache topology support ([a3b36c125](https://github.com/enjoy-digital/litex/commit/a3b36c125), [2781b0124](https://github.com/enjoy-digital/litex/commit/2781b0124)).
+- **cpu/naxriscv**                                 : Added support for generating cache sections in DTS ([e1986d554](https://github.com/enjoy-digital/litex/commit/e1986d554)).
+- **soc/cores/clock**                              : Added CologneChip GateMatePLL import ([eda4e49b7](https://github.com/enjoy-digital/litex/commit/eda4e49b7)).
+- **litesdcard/phy**                               : Added support for changing modes (x1, x4, x8) ([PR #38](https://github.com/enjoy-digital/litesdcard/pull/38)).
+- **liteiclink/serdes/gtp_7series**                : Added rx_prbs_errors_width parameter to add_prbs_control and add_controls ([ef9c295](https://github.com/enjoy-digital/liteiclink/commit/ef9c295)).
+- **litei2c/master**                               : Added interrupt option ([ad7ec63](https://github.com/enjoy-digital/litei2c/commit/ad7ec63)).
+- **litepcie/gen**                                 : Added support for specifying DMA data_width in .yml configuration ([2682042](https://github.com/enjoy-digital/litepcie/commit/2682042)).
+- **litepcie/frontend/ptm**                        : Added named Time Clock Domain to avoid conflicts in larger designs ([029a578](https://github.com/enjoy-digital/litepcie/commit/029a578)).
+- **soc/cores/cpu/zynq7000**                       : Added UART, SPI, I2C, and GPIO support with EMIO/PS configurations ([PR #2340](https://github.com/enjoy-digital/litex/pull/2340)).
+- **soc/cores/cpu/coreblocks**                     : Added small_linux config and CoreSoCks wrapper support ([PR #2339](https://github.com/enjoy-digital/litex/pull/2339)).
+- **soc/cores/clock/intel_agilex**                 : Added Altera Agilex PLL core ([PR #2324](https://github.com/enjoy-digital/litex/pull/2324)).
+- **build/altera/quartus**                         : Added noprune attribute support and clock_constraints object ([PR #2336](https://github.com/enjoy-digital/litex/pull/2336)).
+- **build/lattice/trellis**                        : Added argument to override bitstream's IDCODE ([PR #2309](https://github.com/enjoy-digital/litex/pull/2309)).
+- **build/altera/common**                          : Added specials for Agilex DifferentialInput/Output and Tristate Implementation ([PR #2318](https://github.com/enjoy-digital/litex/pull/2318)).
+- **build/lattice**                                : Added SDR tristate specialisation for ECP5 ([PR #2326](https://github.com/enjoy-digital/litex/pull/2326)).
+- **build/altera/quartus**                         : Added selection between quartus_cpf and quartus_pfg for file conversion ([PR #2318](https://github.com/enjoy-digital/litex/pull/2318)).
+- **software/system**                              : Added functions to clean/invalidate/flush cache ([PR #2325](https://github.com/enjoy-digital/litex/pull/2325)).
+- **soc/cores/cpu/vexiiriscv**                     : Added cache management functions ([PR #2325](https://github.com/enjoy-digital/litex/pull/2325)).
+- **liteeth/mac/core**                             : Allowed using core_dw smaller than phy_dw ([PR #177](https://github.com/enjoy-digital/liteeth/pull/177)).
+- **liteeth/mac**                                  : Used one CRC engine for Checker ([PR #183](https://github.com/enjoy-digital/liteeth/pull/183)).
+- **liteeth/phy/rmii**                             : Added use of rx_er if it exists ([PR #194](https://github.com/enjoy-digital/liteeth/pull/194)).
+- **liteeth/phy/titanium/trion rgmii**             : Added improvements and multibit IO support ([PR #181](https://github.com/enjoy-digital/liteeth/pull/181)).
+- **litesdcard/phy**                               : Added CSRs for timeout configuration ([PR #43](https://github.com/enjoy-digital/litesdcard/pull/43)).
+- **litespi/phy/sdr**                              : Added extra_latency like in DDR phy ([PR #89](https://github.com/enjoy-digital/litespi/pull/89)).
+- **litespi/modules**                              : Added MX25U25645G flash ([PR #88](https://github.com/enjoy-digital/litespi/pull/88)).
+- **litedram/modules**                             : Added W989D6DBGX6 ([PR #366](https://github.com/enjoy-digital/litedram/pull/366)).
+- **litei2c/clkgen**                               : Added scl_o/oe signals for code simplification and external access ([166e2f6](https://github.com/enjoy-digital/litei2c/commit/166e2f6)).
+- **liteiclink/serdes/gtx_7series**                : Added rx_prbs_errors_width parameter ([1cddcd4](https://github.com/enjoy-digital/liteiclink/commit/1cddcd4)).
+- **build/radiant**                                : Added false paths to .pdc file generation ([PR #2312](https://github.com/enjoy-digital/litex/pull/2312)).
+- **build/efinix/clock/pll**                       : Added nclkout argument to create_clkout ([PR #2300](https://github.com/enjoy-digital/litex/pull/2300)).
+- **Boards/targets**                               : Added support for **Machdyne Kolsch** ([PR #679](https://github.com/litex-hub/litex-boards/pull/679)).
+- **Boards/targets**                               : Added support for **Alinx AX7203** with platform and target ([PR #678](https://github.com/litex-hub/litex-boards/pull/678)).
+- **Boards/targets**                               : Added HDMI support for Alinx AX7203 ([PR #680](https://github.com/litex-hub/litex-boards/pull/680)).
+- **Boards/targets**                               : Added USB option using PMOD connector JB for Digilent Nexys Video (2 USB-OHCI ports) ([PR #672](https://github.com/litex-hub/litex-boards/pull/672)).
+- **Boards/targets**                               : Added SD card support for CologneChip GateMate EVB ([PR #673](https://github.com/litex-hub/litex-boards/pull/673)).
+- **Boards/targets**                               : Added HyperRAM support for CologneChip GateMate EVB ([PR #670](https://github.com/litex-hub/litex-boards/pull/670)).
+- **Boards/targets**                               : Added missing enable pin for 20 MHz VCXO on BerkeleyLab Marble ([PR #676](https://github.com/litex-hub/litex-boards/pull/676)).
+- **Boards/targets**                               : Added support for **Icepi Zero** ([PR #693](https://github.com/litex-hub/litex-boards/pull/693)).
+- **Boards/targets**                               : Added support for **Berkeley Lab Obsidian A35** ([PR #686](https://github.com/litex-hub/litex-boards/pull/686)).
+- **Boards/targets**                               : Added support for **Efinix TZ170 J484 Dev Kit** ([PR #691](https://github.com/litex-hub/litex-boards/pull/691)).
+- **Boards/targets**                               : Added support for **Arrow AXE5000** (Altera Agilex 5) ([PR #689](https://github.com/litex-hub/litex-boards/pull/689)).
+- **Boards/targets**                               : Added support for **ULX5M-GS** ([PR #688](https://github.com/litex-hub/litex-boards/pull/688)).
+- **Boards/targets**                               : Added support for **QMTech Cyclone10 Starter Kit - 10CL080** ([PR #683](https://github.com/litex-hub/litex-boards/pull/683)).
+
+[> Changed
+----------
+- **soc/litesdcard**                               : Moved litesdcard modules to a parent class for add_sdcard(), renamed irq to ev ([PR #2281](https://github.com/enjoy-digital/litex/pull/2281), [b46e06182](https://github.com/enjoy-digital/litex/commit/b46e06182)).
+- **software/litesdcard**                          : Removed limitations for clock divider ([PR #2276](https://github.com/enjoy-digital/litex/pull/2276)).
+- **cpu/vexiiriscv**                               : Updated recommended commit to latest dev ([ee6c3102b](https://github.com/enjoy-digital/litex/commit/ee6c3102b)).
+- **build/efinix/efinity**                         : Updated to use efx_run for builds, added tail_log parameter for log redirection, and set CLKOUT_DYNPHASE_EN ([PR #2247](https://github.com/enjoy-digital/litex/pull/2247), [83a14dd64](https://github.com/enjoy-digital/litex/commit/83a14dd64)).
+- **build/colognechip**                            : Removed forced ram_style=distributed ([PR #2254](https://github.com/enjoy-digital/litex/pull/2254)).
+- **ci/tooling**                                   : Updated to use GHDL from OSS CAD Suite and bumped to latest version ([5e58ab1ba](https://github.com/enjoy-digital/litex/commit/5e58ab1ba)).
+- **platforms/digilent_nexys_video**               : Added PMOD connectors ([6bbca0e](https://github.com/litex-hub/litex-boards/commit/6bbca0e)).
+- **targets/berkeleylab_marble**                   : Made max I2C interface optional ([74cd48d](https://github.com/litex-hub/litex-boards/commit/74cd48d)).
+- **platforms/berkeleylab_marble/marblemini**      : Removed redundant files ([PR #675](https://github.com/litex-hub/litex-boards/pull/675)).
+- **litesdcard/phy/SDPHYClocker**                  : Reworked clock divider to use down-counter, simplified logic, and ensured frequency <= configured ([PR #40](https://github.com/enjoy-digital/litesdcard/pull/40)).
+- **litesdcard/phy**                               : Set default data_width to 4x ([PR #38](https://github.com/enjoy-digital/litesdcard/pull/38)).
+- **soc/cores/cpu/coreblocks**                     : Updated to 2025-09 with small_linux config and Vivado hacks ([PR #2339](https://github.com/enjoy-digital/litex/pull/2339)).
+- **soc/cores/clock/intel_agilex**                 : Refactored PLL core and updated SDC constraints ([PR #2336](https://github.com/enjoy-digital/litex/pull/2336)).
+- **build/altera/platform**                        : Refactored Agilex special overrides for Agilex 3 support ([PR #2334](https://github.com/enjoy-digital/litex/pull/2334)).
+- **soc/interconnect/axi**                         : Optimized AXI bus with mode, split read/write, and faster read ([PR #2289](https://github.com/enjoy-digital/litex/pull/2289)).
+- **build/colognechip**                            : Enabled multipliers with peppercorn toolchain ([PR #2319](https://github.com/enjoy-digital/litex/pull/2319)).
+- **soc/cores/uart**                               : Switched to EventSourceLevel irq and exposed rx_fifo_rx_we ([PR #2319](https://github.com/enjoy-digital/litex/pull/2319)).
+- **soc/integration/csr**                          : Improved read/write handling for big/little endian ordering ([PR #2270](https://github.com/enjoy-digital/litex/pull/2270)).
+- **soc/ethernet**                                 : Used phy_cd name directly from phy for multiple PHY support ([PR #2163](https://github.com/enjoy-digital/litex/pull/2163)).
+- **soc/litespi**                                  : Improved add_spi_flash with QPI activation, kwargs, and wait for quad mode ([PR #2313](https://github.com/enjoy-digital/litex/pull/2313)).
+- **build/io/Tristate**                            : Added support for i/i1/i2 being None in SDR/DDR Tristate ([PR #2310](https://github.com/enjoy-digital/litex/pull/2310)).
+- **build/efinix/common**                          : Updated to use add_iface_io ([PR #2293](https://github.com/enjoy-digital/litex/pull/2293)).
+- **build/xilinx/vivado**                          : Switched to non-project mode and made verilog headers global ([PR #2294](https://github.com/enjoy-digital/litex/pull/2294)).
+- **soc/cores/ram/efinix_hyperram**                : Modernized PLL uses and exposed CTOR params ([PR #2295](https://github.com/enjoy-digital/litex/pull/2295)).
+- **build/efinix/clock/pll**                       : Used margin for frequency check ([PR #2299](https://github.com/enjoy-digital/litex/pull/2299)).
+- **liteeth/mac/core**                             : Added docstrings and allowed smaller core_dw ([PR #177](https://github.com/enjoy-digital/liteeth/pull/177)).
+- **liteeth/mac/sram**                             : Simplified logic and named memory ([PR #191](https://github.com/enjoy-digital/liteeth/pull/191)).
+- **liteeth/phy/titanium_lvds_1000basex**          : Cleaned up and refactored for readability and reduced resources ([PR #192](https://github.com/enjoy-digital/liteeth/pull/192)).
+- **litesdcard/phy**                               : Made use of LiteXModule ([PR #46](https://github.com/enjoy-digital/litesdcard/pull/46)).
+- **litesdcard/crc16**                             : Moved CRC16 check to phy and reworked tests ([PR #45](https://github.com/enjoy-digital/litesdcard/pull/45)).
+- **litesdcard/core**                              : Moved block delimiter into core ([PR #44](https://github.com/enjoy-digital/litesdcard/pull/44)).
+- **litespi/core/mmap**                            : Excluded write code when disabled ([PR #87](https://github.com/enjoy-digital/litespi/pull/87)).
+- **litespi/phy**                                  : Added kwargs support ([ef806bd](https://github.com/enjoy-digital/litespi/commit/ef806bd)).
+- **litei2c/phy/clkgen**                           : Made scl_o a Constant again and removed unused i from SDRTristate ([8b6f5e8](https://github.com/enjoy-digital/litei2c/commit/8b6f5e8), [c34fdb8](https://github.com/enjoy-digital/litei2c/commit/c34fdb8)).
+- **ci/github_actions**                            : Bumped actions/setup-python from 5 to 6 ([PR #690](https://github.com/litex-hub/litex-boards/pull/690)).
+- **ci/github_actions**                            : Bumped actions/checkout from 4 to 5 ([PR #687](https://github.com/litex-hub/litex-boards/pull/687)).
+
+
+[> 2025.04, released on May 26th 2025
+-------------------------------------
+
+[> Fixed
+--------
+- **build/io**                               : Fixed length check after wrapping for SDRIO/Tristate to handle int and bool types correctly ([PR #2105](https://github.com/enjoy-digital/litex/pull/2105)).
+- **soc/integration/soc/add_slave**          : Fixed crash when `strip_origin` is *None* by correctly using `self.regions[name]` ([86b052e41](https://github.com/enjoy-digital/litex/commit/86b052e41)).
+- **build/anlogic**                          : Fixed Tang Dynasty programmer exit-hang and corrected “TangDinasty” typo → **TangDynasty** ([79d206fc2](https://github.com/enjoy-digital/litex/commit/79d206fc2), [6f8e65e10](https://github.com/enjoy-digital/litex/commit/6f8e65e10)).
+- **build/io / gen/fhdl/expression**         : Fixed slice-resolution regression introduced by PR #2161 ([666c9b430](https://github.com/enjoy-digital/litex/commit/666c9b430)).
+- **soc/software/bios/litedram**             : Fixed write-levelling helpers being called on DDR2 parts ([e88fbfb95](https://github.com/enjoy-digital/litex/commit/e88fbfb95)).
+- **gcc flags**                              : Fixed wrong `-march` value for *Minerva* and *Sentinel* CPUs ([866d04025](https://github.com/enjoy-digital/litex/commit/866d04025)).
+- **litedram/phy/s7ddrphy**                  : Fixed unintended write-leveling on DDR2 modules ([632e921](https://github.com/enjoy-digital/litedram/commit/632e921)).
+- **liteeth/phy/rmii**                       : Fixed speed-detect FSM corner cases and RX-path glitches ([6e7a70c](https://github.com/enjoy-digital/liteeth/commit/6e7a70c)).
+- **litepcie/software/kernel**               : Fixed `liteuart` build on Linux ≥ 6.10/6.11 ([3b5c70f](https://github.com/enjoy-digital/litepcie/commit/3b5c70f), [be0abeb](https://github.com/enjoy-digital/litepcie/commit/be0abeb)).
+- **tools/json2dts_zephyr**                  : Fixed missing interrupt 0, MDIO handling, and buffer split issues ([2a97b0308](https://github.com/enjoy-digital/litex/commit/2a97b0308)).
+- **misc**                                   : Fixed uptime counter width (now `uint64`) and removed assorted static-analysis warnings ([724034564](https://github.com/enjoy-digital/litex/commit/724034564)).
+
+[> Added
+--------
+- **cores/cpu/ibex**                         : Aligned with latest RTL, fixed file paths, and addressed Verilator parameter type limitation ([PR #2160](https://github.com/enjoy-digital/litex/pull/2160)).
+- **cores/cpu/openc906**                     : Aligned with latest RTL, removed unused file lists, and updated bus conversion logic ([PR #2159](https://github.com/enjoy-digital/litex/pull/2159)).
+- **build/io**                               : Added multibit/bus variants of SDR and DDR IO for Efinix and other platforms ([PR #2105](https://github.com/enjoy-digital/litex/pull/2105)).
+- **gen/fhdl/expression**                    : Resolved slice handling completely to reduce complexity in Verilog files ([PR #2161](https://github.com/enjoy-digital/litex/pull/2161)).
+- **cores/cpu/coreblocks**                   : Added new open-source RISC-V “Coreblocks” CPU support ([fb6d78c92](https://github.com/enjoy-digital/litex/commit/fb6d78c92)).
+- **build/vhd2v_converter**                  : Added `CTOR` argument to bypass source-flattening when desired ([138379f3d](https://github.com/enjoy-digital/litex/commit/138379f3d)).
+- **fhdl/verilog/slice_lowerer**             : Added inversion support and lowering of specials ([7efbd0535](https://github.com/enjoy-digital/litex/commit/7efbd0535), [32041f21c](https://github.com/enjoy-digital/litex/commit/32041f21c)).
+- **build/anlogic**                          : Added *TangDynastyProgrammer* backend and DR1V90 MEG484 device support ([c77f2e834](https://github.com/enjoy-digital/litex/commit/c77f2e834), [2387bc6be](https://github.com/enjoy-digital/litex/commit/2387bc6be)).
+- **build/colognechip**                      : Added native *CC_IOBUF* tristate and open-source *Peppercorn* flow ([62c9b9eb3](https://github.com/enjoy-digital/litex/commit/62c9b9eb3), [1e259f5ef](https://github.com/enjoy-digital/litex/commit/1e259f5ef)).
+- **soc/cores/clock/xilinx_common**          : Added Dynamic-Phase-Shift (DPS) interface exposure ([2c98fed25](https://github.com/enjoy-digital/litex/commit/2c98fed25)).
+- **soc/cores/clock/efinix**                 : Added on-chip flash programmer and *Topaz* FPGA family support ([761184110](https://github.com/enjoy-digital/litex/commit/761184110), [a0159e18a](https://github.com/enjoy-digital/litex/commit/a0159e18a)).
+- **axi/Wishbone2AXILite**                   : Added one-cycle faster implementation ([d631d810b](https://github.com/enjoy-digital/litex/commit/d631d810b)).
+- **litepcie PHYs**                          : Added *Certus Pro-NX* PCIe PHY ([e157d1e](https://github.com/enjoy-digital/litepcie/commit/e157d1e)) and *Gowin Arora V* PCIe PHY ([e14cf57](https://github.com/enjoy-digital/litepcie/commit/e14cf57)).
+- **litepcie/frontend/wishbone**             : Added 64-bit addressing and byte-addressable mode ([5f15aa7](https://github.com/enjoy-digital/litepcie/commit/5f15aa7)).
+- **litescope**                              : Added automatic group data-width padding and `--port` CLI flag ([021a834](https://github.com/enjoy-digital/litescope/commit/021a834)).
+- **litedram**                               : Added DDR2 device *K4T1G164QGBCE7* definition ([118e291](https://github.com/enjoy-digital/litedram/commit/118e291)).
+- **liteeth/phy/rmii**                       : Added automatic 10/100 Mb/s speed-detect FSM ([bbc4eb7](https://github.com/enjoy-digital/liteeth/commit/bbc4eb7)).
+- **litespi**                                : Added unified bus abstraction (PR #81) and offset-less mmap mode (PR #82).
+- **Boards/targets**                         : Added support for **mlkpai FS01 DR1V90M**, **HyVision PCIe opt01 revF**, **Alinx AX7020/7010** (PS7 DDR), **Kintex-7 Base C**, **Colorlight 5A-75E v8.2**, **Certus-Pro-NX Versa**, **Sipeed Tang Console / Mega 138k Pro / Nano 20k**, **Efinix Ti375 C529** (2× SFP, DDR, FMC-LPC) and several others (see commit history).
+
+[> Changed
+----------
+- **gen/fhdl/instance**                      : Switched to using `expression.py` for expression generation ([e71e404ef](https://github.com/enjoy-digital/litex/commit/e71e404ef)).
+- **gen/fhdl**                               : Moved expression generation functions to `expression.py` for better organization ([0bfaf39d5](https://github.com/enjoy-digital/litex/commit/0bfaf39d5)).
+- **build/yosys_nextpnr/xilinx**             : Injects `--freq` automatically from reported Fmax ([fce56fae8](https://github.com/enjoy-digital/litex/commit/fce56fae8)).
+- **tools/json2dts_zephyr**                  : Rewritten for modularity; adds optional overlay and buffer splitting ([778d39d5c](https://github.com/enjoy-digital/litex/commit/778d39d5c)…).
+- **build/common/TristateImpl**              : Added wide-`oe` support and stricter signal-length checks ([913a70962](https://github.com/enjoy-digital/litex/commit/913a70962), [a019fd4ed](https://github.com/enjoy-digital/litex/commit/a019fd4ed)).
+- **Clocking cores**                         : Exposed DPS on Xilinx, enabled PLLA on GW5AT, improved async DDR I/O.
+- **CI/tooling**                             : Migrated CI to Ubuntu 22.04, switched to OSS-CAD-Suite, added Python 3.11 compatibility.
+
+[> 2024.12, released on January 7th 2025
+----------------------------------------
+
+[> Fixed
+--------
+- **tools/litex_client**                     : Fixed error handling and timeout management ([1225bf45](https://github.com/enjoy-digital/litex/commit/1225bf45), [fc529dca](https://github.com/enjoy-digital/litex/commit/fc529dca), [b9cc5c58](https://github.com/enjoy-digital/litex/commit/b9cc5c58)).
+- **soc/cores/led**                          : Fixed WS2812 LED count calculation ([PR #2142](https://github.com/enjoy-digital/litex/pull/2142)).
+- **build/vhd2v_converter**                  : Fixed instance handling and robustness ([PR #2145](https://github.com/enjoy-digital/litex/pull/2145), [8254a349f](https://github.com/enjoy-digital/litex/commit/8254a349f)).
+- **soc/cores/jtag**                         : Fixed ECP5JTAG initialization for Diamond/Trellis toolchains ([4368d5a9e](https://github.com/enjoy-digital/litex/commit/4368d5a9e)).
+- **litespi**                                : Fixed SPI Flash erase functionality and debug output ([e61196b1c](https://github.com/enjoy-digital/litex/commit/e61196b1c), [63fa4fda8](https://github.com/enjoy-digital/litex/commit/63fa4fda8)).
+- **liteeth/phy/pcs_1000basex**              : Fixed deadlock in AUTONEG_WAIT_ABI state and improved RX alignment ([e5746c8](https://github.com/enjoy-digital/liteeth/commit/e5746c8)).
+- **liteeth/phy/pcs_1000basex**              : Fixed RX Config consistency check and cleanup pass ([20e9ea6](https://github.com/enjoy-digital/liteeth/commit/20e9ea6), [cd2274d](https://github.com/enjoy-digital/liteeth/commit/cd2274d)).
+- **litepcie/software/kernel**               : Fixed compilation warnings and removed unused functions ([867c818](https://github.com/enjoy-digital/litepcie/commit/867c818)).
+- **platforms/limesdr_mini_v2**              : Fixed SPI Flash pinout (MOSI <-> MISO) ([3b8c558](https://github.com/litex-hub/litex-boards/commit/3b8c558)).
+- **efinix_trion_t20_bga256_dev_kit**        : Fixed ClockSignal handling ([77cb9a5](https://github.com/litex-hub/litex-boards/commit/77cb9a5)).
+
+[> Added
+--------
+- **cpu/zynqmp**                             : Added SGMII support via PL and optional PTP ([PR #2095](https://github.com/enjoy-digital/litex/pull/2095)).
+- **liteeth/phy**                            : Improved 1000BaseX/2500BaseX PCS/PHYs ([PR #174](https://github.com/enjoy-digital/liteeth/pull/174)).
+- **cpu/urv**                                : Added uRV CPU support (RISC-V CPU use in White Rabbit project) ([PR #2098](https://github.com/enjoy-digital/litex/pull/2098)).
+- **tools/litex_client**                     : Added memory regions table, auto-refresh, and binary file read/write support ([d3258a398](https://github.com/enjoy-digital/litex/commit/d3258a398), [3875a4c1f](https://github.com/enjoy-digital/litex/commit/3875a4c1f), [95f37a82e](https://github.com/enjoy-digital/litex/commit/95f37a82e)).
+- **tools/litex_client**                     : Added endianness configuration for memory accesses ([71e802aec](https://github.com/enjoy-digital/litex/commit/71e802aec)).
+- **cores/clock/intel**                      : Added reset support to Intel PLLs ([PR #2139](https://github.com/enjoy-digital/litex/pull/2139)).
+- **cores/cpu/vexiiriscv**                   : Added PMP support and MACSG (DMA-based Ethernet) support ([PR #2130](https://github.com/enjoy-digital/litex/pull/2130)).
+- **build/altera/quartus**                   : Added `.svf` generation for OpenFPGALoader compatibility ([e91d4d1a3](https://github.com/enjoy-digital/litex/commit/e91d4d1a3)).
+- **build/efinix**                           : Added SEU (Single Event Upset) interface ([PR #2128](https://github.com/enjoy-digital/litex/pull/2128)).
+- **soc/cores/bitbang/i2c**                  : Added `connect_pads` parameter for flexible I2C pad handling ([fdd7c97ce](https://github.com/enjoy-digital/litex/commit/fdd7c97ce)).
+- **platforms/xilinx_zcu102**                : Added all SFP connectors ([0eabebf](https://github.com/litex-hub/litex-boards/commit/0eabebf)).
+- **targets/sipeed_tang_nano_20k**           : Added SPI Flash and HDMI support ([2d25408](https://github.com/litex-hub/litex-boards/commit/2d25408)).
+- **targets/embedfire_rise_pro**             : Added support for EmbedFire Rise Pro ([d7f2b5a](https://github.com/litex-hub/litex-boards/commit/d7f2b5a)).
+- **targets/alibaba_vu13p**                  : Added support for Alibaba VU13P ([e8e833d](https://github.com/litex-hub/litex-boards/commit/e8e833d)).
+- **targets/efinix_ti375_c529_dev_kit**      : Added VexII Ethernet support ([4c61bac](https://github.com/litex-hub/litex-boards/commit/4c61bac)).
+- **targets/efinix_trion_t20_mipi_dev_kit**  : Added simple flash fix ([1727d30](https://github.com/litex-hub/litex-boards/commit/1727d30)).
+- **targets/machdyne_mozart_mx2**            : Added support for Mozart MX2 ([399f10f](https://github.com/litex-hub/litex-boards/commit/399f10f)).
+- **targets/tec0117**                        : Updated to work with Apicula ([9d68972](https://github.com/litex-hub/litex-boards/commit/9d68972)).
+
+[> Changed
+----------
+- **tools/litex_client**                     : Improved GUI presentation and memory region display ([5c156b499](https://github.com/enjoy-digital/litex/commit/5c156b499), [d3258a398](https://github.com/enjoy-digital/litex/commit/d3258a398)).
+- **liteeth/phy/pcs_1000basex**              : Refactored RX Config consistency check and improved timers ([b783639](https://github.com/enjoy-digital/liteeth/commit/b783639), [fe69248](https://github.com/enjoy-digital/liteeth/commit/fe69248)).
+- **liteeth/phy/a7_1000basex**               : Updated ALIGN_COMMA_WORD/RXCDR_CFG settings from Xilinx wizard ([04fc888](https://github.com/enjoy-digital/liteeth/commit/04fc888)).
+- **liteeth/mac/core**                       : Switched to LiteXModule for better modularity ([f30d6ef](https://github.com/enjoy-digital/liteeth/commit/f30d6ef)).
 
 [> 2024.08, released on September 27th 2024
 -------------------------------------------

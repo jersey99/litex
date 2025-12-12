@@ -138,14 +138,14 @@ class NaxRiscv(CPU):
             xlen = int(args.xlen)
             NaxRiscv.xlen                 = xlen
             NaxRiscv.data_width           = xlen
-            NaxRiscv.gcc_triple           = CPU_GCC_TRIPLE_RISCV64
+            NaxRiscv.gcc_triple           = CPU_GCC_TRIPLE_RISCV64 if xlen == 64 else CPU_GCC_TRIPLE_RISCV32
             NaxRiscv.linker_output_format = f"elf{xlen}-littleriscv"
         if args.cpu_count:
-            NaxRiscv.cpu_count = args.cpu_count
+            NaxRiscv.cpu_count = int(args.cpu_count)
         if args.l2_bytes:
-            NaxRiscv.l2_bytes = args.l2_bytes
+            NaxRiscv.l2_bytes = int(args.l2_bytes)
         if args.l2_ways:
-            NaxRiscv.l2_ways = args.l2_ways
+            NaxRiscv.l2_ways = int(args.l2_ways)
 
 
     def __init__(self, platform, variant):
@@ -311,8 +311,8 @@ class NaxRiscv(CPU):
         cwd = os.getcwd()
         os.chdir(os.path.join(dir))
         wipe_cmd = "&& git clean --force -d -x && git reset --hard" if "wipe" in update else ""
-        checkout_cmd = f"&& git checkout {hash}" if hash is not None else ""
-        subprocess.check_call(f"cd {dir} {wipe_cmd} && git checkout {branch} && git submodule init && git pull --recurse-submodules {checkout_cmd}", shell=True)
+        checkout_cmd = f"&& git checkout {hash} && git submodule update --init --recursive" if hash is not None else ""
+        subprocess.check_call(f"cd {dir} {wipe_cmd} && git checkout {branch} && git pull --recurse-submodules {checkout_cmd}", shell=True)
         os.chdir(cwd)
 
     # Netlist Generation.
@@ -399,6 +399,18 @@ class NaxRiscv(CPU):
         soc.add_config("CPU_ISA", NaxRiscv.get_arch())
         soc.add_config("CPU_MMU", {32 : "sv32", 64 : "sv39"}[NaxRiscv.xlen])
 
+        # Constants for cache so we can add them in the DTS.
+        soc.add_config("CPU_DCACHE_SIZE", 16384)
+        soc.add_config("CPU_DCACHE_WAYS", 4)
+        soc.add_config("CPU_DCACHE_BLOCK_SIZE", 64) # hardwired?
+        soc.add_config("CPU_ICACHE_SIZE", 16384)
+        soc.add_config("CPU_ICACHE_WAYS", 4)
+        soc.add_config("CPU_ICACHE_BLOCK_SIZE", 64) # hardwired?
+        if NaxRiscv.l2_bytes > 0:
+            soc.add_config("CPU_L2CACHE_SIZE", NaxRiscv.l2_bytes)
+            soc.add_config("CPU_L2CACHE_WAYS", NaxRiscv.l2_ways)
+            soc.add_config("CPU_L2CACHE_BLOCK_SIZE", 64) # hardwired?
+
         soc.bus.add_region("plic",  SoCRegion(origin=soc.mem_map.get("plic"),  size=0x40_0000, cached=False,  linker=True))
         soc.bus.add_region("clint", SoCRegion(origin=soc.mem_map.get("clint"), size= 0x1_0000, cached=False,  linker=True))
 
@@ -427,13 +439,13 @@ class NaxRiscv(CPU):
 
             self.cpu_params.update(
                 i_jtag_instruction_clk     = self.jtag_clk,
-                i_jtag_instruction_enable  = self.jtag_enable,
-                i_jtag_instruction_capture = self.jtag_capture,
-                i_jtag_instruction_shift   = self.jtag_shift,
-                i_jtag_instruction_update  = self.jtag_update,
-                i_jtag_instruction_reset   = self.jtag_reset,
-                i_jtag_instruction_tdi     = self.jtag_tdi,
-                o_jtag_instruction_tdo     = self.jtag_tdo,
+                i_jtag_instruction_instruction_enable  = self.jtag_enable,
+                i_jtag_instruction_instruction_capture = self.jtag_capture,
+                i_jtag_instruction_instruction_shift   = self.jtag_shift,
+                i_jtag_instruction_instruction_update  = self.jtag_update,
+                i_jtag_instruction_instruction_reset   = self.jtag_reset,
+                i_jtag_instruction_instruction_tdi     = self.jtag_tdi,
+                o_jtag_instruction_instruction_tdo     = self.jtag_tdo,
             )
 
         if NaxRiscv.jtag_instruction or NaxRiscv.jtag_tap:

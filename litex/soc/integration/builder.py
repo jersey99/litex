@@ -253,6 +253,7 @@ class Builder:
         csr_contents = export.get_csr_header(
             regions   = self.soc.csr_regions,
             constants = self.soc.constants,
+            csr_ordering = self.soc.csr.ordering,
             csr_base  = self.soc.mem_regions["csr"].origin,
             with_access_functions        = True,
             with_fields_access_functions = False,
@@ -276,6 +277,7 @@ class Builder:
         # JSON Export.
         if self.csr_json is not None:
             csr_json_contents = export.get_csr_json(
+                soc         = self.soc,
                 csr_regions = self.soc.csr_regions,
                 constants   = self.soc.constants,
                 mem_regions = self.soc.mem_regions)
@@ -284,6 +286,7 @@ class Builder:
         # CSV Export.
         if self.csr_csv is not None:
             csr_csv_contents = export.get_csr_csv(
+                soc         = self.soc,
                 csr_regions = self.soc.csr_regions,
                 constants   = self.soc.constants,
                 mem_regions = self.soc.mem_regions)
@@ -317,8 +320,8 @@ class Builder:
 
     def _generate_rom_software(self, compile_bios=True):
         # Compile all software packages.
-         for name, src_dir in self.software_packages:
-
+        cpu_count = os.cpu_count()
+        for name, src_dir in self.software_packages:
             # Skip BIOS compilation when disabled.
             if name == "bios" and not compile_bios:
                 continue
@@ -326,7 +329,7 @@ class Builder:
             dst_dir  = os.path.join(self.software_dir, name)
             makefile = os.path.join(src_dir, "Makefile")
             if self.compile_software:
-                subprocess.check_call(["make", "-C", dst_dir, "-f", makefile])
+                subprocess.check_call(["make", f"-j{cpu_count}", "-C", dst_dir, "-f", makefile])
 
     def _initialize_rom_software(self):
         # Get BIOS data from compiled BIOS binary.
