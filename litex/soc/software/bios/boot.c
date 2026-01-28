@@ -389,8 +389,8 @@ void netload_fpga(void) {
 	printf(".");
     }
     if (get_and_program_id) {
-      size = copy_file_from_tftp_to_ram(IPTOINT(remote_ip[0], subnet_byte, remote_ip[2], remote_ip[3]),
-					TFTP_SERVER_PORT, "subnet_id_board_id", (void *)(MAIN_RAM_BASE));
+      size = copy_file_from_tftp_to_flash(IPTOINT(remote_ip[0], subnet_byte, remote_ip[2], remote_ip[3]),
+					  TFTP_SERVER_PORT, "subnet_id_board_id", (void *)(MAIN_RAM_BASE));
       printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
       printf("Setting MMAP to Write\n");
       spiflash_core_mmap_write_config_write(1);
