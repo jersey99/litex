@@ -275,7 +275,7 @@ class SoCBusHandler(LiteXModule):
         if cached == False:
             search_regions = self.io_regions
         else:
-            search_regions = {"main": SoCRegion(origin=0x00000000, size=2**self.address_width-1)}
+            search_regions = {"main": SoCRegion(origin=0x00000000, size=2**self.address_width)}
 
         # Iterate on Search_Regions to find a Candidate.
         size_pow2 = 2**log2_int(size, False)
@@ -517,11 +517,11 @@ class SoCBusHandler(LiteXModule):
 
         self.submodules += offset_cls(adapted_interface, interface, offset)
 
-        fmt = "{name} Bus {offseted} by {offset}."
+        fmt = "{name} Bus {action} by {offset}."
         self.logger.info(fmt.format(
-            name     = colorer(name),
-            offseted = colorer("offseted", color="cyan"),
-            offset   = colorer(f"0x{offset:08x}"),
+            name   = colorer(name),
+            action = colorer("offset", color="cyan"),
+            offset = colorer(f"0x{offset:08x}"),
         ))
 
         return adapted_interface
@@ -565,7 +565,7 @@ class SoCBusHandler(LiteXModule):
                     colorer("not found", color="red")))
                 raise SoCError()
         else:
-             self.add_region(name, region)
+            self.add_region(name, region)
         if name in self.slaves.keys():
             self.logger.error("{} {} as Bus Slave:".format(
                 colorer(name),
@@ -706,7 +706,7 @@ class SoCLocHandler(LiteXModule):
                         self.name,
                         colorer("positive", color="red")))
                     raise SoCError()
-                if n > self.n_locs:
+                if n >= self.n_locs:
                     self.logger.error("{} {} Location {} than maximum: {}.".format(
                         colorer(n),
                         self.name,
@@ -799,7 +799,7 @@ class SoCCSRHandler(SoCLocHandler):
         if ordering not in self.supported_ordering:
             self.logger.error("Unsupported {} {}, supported are: {:s}".format(
                 colorer("Ordering", color="red"),
-                colorer("{}".format(paging)),
+                colorer("{}".format(ordering)),
                 colorer(", ".join("{}".format(x) for x in self.supported_ordering))))
             raise SoCError()
 
@@ -839,7 +839,7 @@ class SoCCSRHandler(SoCLocHandler):
         if master.data_width != self.data_width:
             self.logger.error("{} Master/Handler Data Width {} ({} vs {}).".format(
                 colorer(name),
-                colorer("missmatch", color="red"),
+                colorer("mismatch", color="red"),
                 colorer(master.data_width),
                 colorer(self.data_width)))
             raise SoCError()
@@ -941,7 +941,7 @@ class SoCController(LiteXModule):
         if with_scratch:
             self._scratch = CSRStorage(32, reset=0x12345678, description="""
                 Use this register as a scratch space to verify that software read/write accesses
-                to the Wishbone/CSR bus are working correctly. The initial reset value of 0x1234578
+                to the Wishbone/CSR bus are working correctly. The initial reset value of 0x12345678
                 can be used to verify endianness.""")
         if with_errors:
             self._bus_errors = CSRStatus(32, description="Total number of Wishbone bus errors (timeouts) since start.")
@@ -1220,8 +1220,8 @@ class SoC(LiteXModule, SoCCoreCompat):
         # Check that CPU is supported.
         if name not in cpu.CPUS.keys():
             supported_cpus = []
-            cpu_name_length = max([len(cpu_name) for cpu_name in cpu.CPUS.keys()])
-            for cpu_name in sorted(cpu.CPUS.keys()):
+            cpu_name_length = max([len(cpu_name) for cpu_name in map(str, cpu.CPUS.keys())])
+            for cpu_name in sorted(map(str, cpu.CPUS.keys())):
                 cpu_cls  = cpu.CPUS[cpu_name]
                 cpu_desc = f"{cpu_cls.family}\t/ {cpu_cls.category}"
                 supported_cpus += [f"- {cpu_name}{' '*(cpu_name_length - len(cpu_name))} ({cpu_desc})"]
@@ -1315,7 +1315,7 @@ class SoC(LiteXModule, SoCCoreCompat):
                 if isinstance(self.cpu.dma_bus, wishbone.Interface):
                     dma_bus_standard = "wishbone"
                 elif isinstance(self.cpu.dma_bus, axi.AXILiteInterface):
-                    dma_bus_standard = "axi_lite"
+                    dma_bus_standard = "axi-lite"
                 elif isinstance(self.cpu.dma_bus, axi.AXIInterface):
                     dma_bus_standard = "axi"
                 else:

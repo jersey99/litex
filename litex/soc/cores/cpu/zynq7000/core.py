@@ -24,20 +24,21 @@ from litex.soc.cores.cpu import CPU
 # Zynq 7000 ----------------------------------------------------------------------------------------
 
 class Zynq7000(CPU):
-    variants             = ["standard"]
-    category             = "hardcore"
-    family               = "arm"
-    name                 = "zynq7000"
-    human_name           = "Zynq7000"
-    data_width           = 32
-    endianness           = "little"
-    reset_address        = 0xfc00_0000
-    gcc_triple           = "arm-none-eabi"
-    gcc_flags            = "-mcpu=cortex-a9 -mfpu=vfpv3 -mfloat-abi=hard"
-    linker_output_format = "elf32-littlearm"
-    nop                  = "nop"
-    io_regions           = {0x4000_0000: 0xbc00_0000} # Origin, Length.
-    csr_decode           = True # AXI address is decoded in AXI2Wishbone, offset needs to be added in Software.
+    variants                 = ["standard"]
+    category                 = "hardcore"
+    family                   = "arm"
+    name                     = "zynq7000"
+    human_name               = "Zynq7000"
+    data_width               = 32
+    endianness               = "little"
+    reset_address            = 0xfc00_0000
+    gcc_triple               = "arm-none-eabi"
+    gcc_flags                = "-mcpu=cortex-a9 -mfpu=vfpv3 -mfloat-abi=hard"
+    linker_output_format     = "elf32-littlearm"
+    nop                      = "nop"
+    io_regions               = {0x4000_0000: 0xbc00_0000} # Origin, Length.
+    csr_decode               = True # AXI address is decoded in AXI2Wishbone, offset needs to be added in Software.
+    integrated_rom_supported = False
 
     # Memory Mapping.
     @property
@@ -484,7 +485,7 @@ class Zynq7000(CPU):
         io_type = {True: pads_or_mio_group, False: "EMIO"}[isinstance(pads_or_mio_group, str)]
 
         # MIO IOs must be "MIO xx .. yy"
-        assert not (io_type != "EMIO" and re.match("MIO \d\d .. \d\d", io_type) is None)
+        assert not (io_type != "EMIO" and re.match(r"MIO \d\d .. \d\d", io_type) is None)
 
         # PS7 configuration.
         self.add_ps7_config({
@@ -660,7 +661,7 @@ class Zynq7000(CPU):
         io_type = {True: pads_or_mio_group, False: "EMIO"}[isinstance(pads_or_mio_group, str)]
 
         # MIO IOs must be "MIO xx .. yy"
-        assert not (io_type != "EMIO" and re.match("MIO \d\d .. \d\d", io_type) is None)
+        assert not (io_type != "EMIO" and re.match(r"MIO \d\d .. \d\d", io_type) is None)
 
         # In EMIO check if Record contains cs1_n/cs2_n
         if io_type == "EMIO":
@@ -763,7 +764,7 @@ class Zynq7000(CPU):
         io_type = {True: pads_or_mio_group, False: "EMIO"}[isinstance(pads_or_mio_group, str)]
 
         # MIO IOs must be "MIO xx .. yy"
-        assert not (io_type != "EMIO" and re.match("MIO \d\d .. \d\d", io_type) is None)
+        assert not (io_type != "EMIO" and re.match(r"MIO \d\d .. \d\d", io_type) is None)
 
         # PS7 configuration.
         self.add_ps7_config({
@@ -944,7 +945,7 @@ class Zynq7000(CPU):
         LiteXContext.top.add_constant(f"CONFIG_PS7_GEM{n}_INT_PHYADDR", internal_phyaddr)
         LiteXContext.top.add_constant(f"CONFIG_PS7_GEM{n}_EXT_PHYADDR", external_phyaddr)
         LiteXContext.top.add_constant(f"CONFIG_PS7_GEM{n}_IO",          eth_io_type)
-        LiteXContext.top.add_constant(f"CONFIG_PS7_GEM{n}_MDIO_ENABLE", mdio_pads_or_mio_group is not None)
+        LiteXContext.top.add_constant(f"CONFIG_PS7_GEM{n}_MDIO_ENABLE", {True: 1, False: 0}[mdio_pads_or_mio_group is not None])
         LiteXContext.top.add_constant(f"CONFIG_PS7_GEM{n}_MDIO_IO",     mdio_io_type)
 
         mac_params = dict()
