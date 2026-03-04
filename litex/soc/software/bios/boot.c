@@ -309,7 +309,7 @@ int serialboot(void)
 #ifdef MACADDR1
 static unsigned char macadr[6] = {MACADDR1, MACADDR2, MACADDR3, MACADDR4, MACADDR5, MACADDR6};
 #else
-static unsigned char macadr[6] = {0x10, 0xe2, 0xd5, 0x00, 0x00, 0x00};
+static unsigned char macadr[6] = {0xa, 0xe2, 0xd5, 0x00, 0x00, 0x00};
 #endif
 
 #ifdef LOCALIP1
@@ -378,7 +378,7 @@ void netload_fpga(void) {
   subnet_byte = (subnet_byte != 9) ? 8 : 9;
 
   printf("netload_fpga subnet: %hhu ip last_byte: %hhu\n", subnet_byte, last_byte_local_ip);
-  macadr [5] = (unsigned char) last_byte_local_ip;
+  macadr[5] = (unsigned char) last_byte_local_ip;
   udp_start(macadr, IPTOINT(local_ip[0], subnet_byte, local_ip[2], last_byte_local_ip));
   udp_set_callback((udp_callback) listener_callback);
   while (1) {
@@ -387,6 +387,8 @@ void netload_fpga(void) {
       _counter ++;
       if (_counter % 1000000 == 0)
 	printf(".");
+      if (_counter % 10000000 == 0)
+	printf("subnet_byte %hhu last_byte %hhu\n", subnet_byte, last_byte_local_ip);
     }
     if (get_and_program_id) {
       size = copy_file_from_tftp_to_flash(IPTOINT(remote_ip[0], subnet_byte, remote_ip[2], remote_ip[3]),
