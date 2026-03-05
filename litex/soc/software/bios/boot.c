@@ -351,6 +351,7 @@ const char *filename, char *buffer)
 
 uint8_t get_and_program_fpga = 0;
 uint8_t get_and_program_id = 0;
+uint32_t g_remote_src_ip = 0;
 
 static void listener_callback(uint32_t src_ip, uint16_t src_port,
     uint16_t dst_port, void *_data, unsigned int length)
@@ -365,6 +366,7 @@ static void listener_callback(uint32_t src_ip, uint16_t src_port,
 	if(strncmp(data, "sfb_program_fpga", 16) == 0) {
 	  get_and_program_fpga = 1;
 	}
+	g_remote_src_ip = src_ip;
 }
 
 void netload_fpga(void) {
@@ -391,7 +393,7 @@ void netload_fpga(void) {
 	printf("subnet_byte %hhu last_byte %hhu\n", subnet_byte, last_byte_local_ip);
     }
     if (get_and_program_id) {
-      size = copy_file_from_tftp_to_flash(IPTOINT(remote_ip[0], subnet_byte, remote_ip[2], remote_ip[3]),
+      size = copy_file_from_tftp_to_flash(g_remote_src_ip,
 					  TFTP_SERVER_PORT, "subnet_id_board_id", (void *)(MAIN_RAM_BASE));
       printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
       printf("Setting MMAP to Write\n");
@@ -419,7 +421,7 @@ void netload_fpga(void) {
       printf("erasing fpga image sectors\n");
       spiflash_erase_range(0, 0x2faf080);  // Delete 50MB for now
 
-      size = copy_file_from_tftp_to_flash(IPTOINT(remote_ip[0], subnet_byte, remote_ip[2], remote_ip[3]),
+      size = copy_file_from_tftp_to_flash(g_remote_src_ip,
 					  TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
 
       printf("Turning off SPI FLASH MMAP write enable\n");
