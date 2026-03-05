@@ -393,20 +393,26 @@ void netload_fpga(void) {
 	printf("subnet_byte %hhu last_byte %hhu\n", subnet_byte, last_byte_local_ip);
     }
     if (get_and_program_id) {
-      size = copy_file_from_tftp_to_flash(g_remote_src_ip,
-					  TFTP_SERVER_PORT, "subnet_id_board_id", (void *)(MAIN_RAM_BASE));
       printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
       printf("Setting MMAP to Write\n");
       spiflash_core_mmap_write_config_write(1);
-      if (size <= 0) {
-	printf("no board_id file found\n");
-      } else {
-	printf("erasing board id sector");
-	spiflash_erase_range(0x3fc0000, 5);
-	printf("programming board id\n");
-	spiflash_write_stream(0x3fc0000, (uint8_t *)(MAIN_RAM_BASE), 5);
-	printf("done!");
-      }
+
+      printf("erasing board id sector");
+      spiflash_erase_range(0x3fc0000, 5);
+
+      size = copy_file_from_tftp_to_flash(g_remote_src_ip,
+					  TFTP_SERVER_PORT,
+					  "subnet_id_board_id",
+					  (void *)(MAIN_RAM_BASE));
+      /* if (size <= 0) { */
+      /* 	printf("no board_id file found\n"); */
+      /* } else { */
+      /* 	printf("erasing board id sector"); */
+      /* 	spiflash_erase_range(0x3fc0000, 5); */
+      /* 	printf("programming board id\n"); */
+      /* 	spiflash_write_stream(0x3fc0000, (uint8_t *)(MAIN_RAM_BASE), 5); */
+      /* 	printf("done!"); */
+      /* } */
       printf("Turning off SPI FLASH MMAP write enable\n");
       spiflash_core_mmap_write_config_write(0);
       printf("MMAP set to: %ld\n", spiflash_core_mmap_write_config_read());
@@ -422,7 +428,9 @@ void netload_fpga(void) {
       spiflash_erase_range(0, 0x2faf080);  // Delete 50MB for now
 
       size = copy_file_from_tftp_to_flash(g_remote_src_ip,
-					  TFTP_SERVER_PORT, "sfb.bin", (void *)MAIN_RAM_BASE);
+					  TFTP_SERVER_PORT,
+					  "sfb.bin",
+					  (void *)MAIN_RAM_BASE);
 
       printf("Turning off SPI FLASH MMAP write enable\n");
       spiflash_core_mmap_write_config_write(0);
