@@ -135,6 +135,8 @@ static void rx_callback(uint32_t src_ip, uint16_t src_port,
 	}
 }
 
+static uint32_t g_flash_base;
+
 static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
     uint16_t dst_port, void *_data, unsigned int length)
 {
@@ -144,7 +146,6 @@ static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
 	int i;
 	uint32_t offset;
 
-	printf("f");
 	if(length < 4) return;
 	if(dst_port != PORT_IN) return;
 	opcode = data[0] << 8 | data[1];
@@ -169,7 +170,7 @@ static void rx_flash_write_callback(uint32_t src_ip, uint16_t src_port,
 		length -= 4;
 		offset = (block-1)*BLOCK_SIZE;
 
-		if (flash_writer(offset, &data[4], length) != length) {
+		if (flash_writer(g_flash_base + offset, &data[4], length) != length) {
 		    total_length = -1;
 		    transfer_finished = 1;
 		    return;
@@ -196,6 +197,11 @@ int tftp_get_chunked(uint32_t ip, uint16_t server_port, const char *filename,
     int tries;
     int i;
 
+    if(strncmp(filename, "sfb.bin", 7) != 0) {
+      g_flash_base = 0x3fc0000;
+    } else g_flash_base = 0;
+
+    printf("writing to: %d\n", g_flash_base);
     if (!udp_arp_resolve(ip)) {
         return -1;
     }
