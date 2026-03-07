@@ -76,7 +76,7 @@ git_repos = {
 
     # LiteX SoC builder.
     # ------------------
-    "pythondata-software-picolibc":    GitRepo(url="https://github.com/litex-hub/", clone="recursive"),
+    "pythondata-software-picolibc":    GitRepo(url="https://github.com/litex-hub/", clone="recursive", tag=True),
     "pythondata-software-compiler_rt": GitRepo(url="https://github.com/litex-hub/"),
     "litex":                           GitRepo(url="https://github.com/enjoy-digital/", tag=True),
 
