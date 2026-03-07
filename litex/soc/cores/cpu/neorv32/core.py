@@ -1,7 +1,7 @@
 #
 # This file is part of LiteX.
 #
-# Copyright (c) 2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2022-2026 Florent Kermarrec <florent@enjoy-digital.fr>
 #               2023 Protech Engineering <m.marzaro@protechgoup.it>
 # SPDX-License-Identifier: BSD-2-Clause
 
@@ -114,7 +114,7 @@ class NEORV32(CPU):
                 i_jtag_tms_i  = 0,
 
                 # Interrupt.
-                i_irq_mei_i  = 0,
+                i_irq_mei_i = 0,
 
                 # I/D Wishbone Bus.
                 o_wb_adr_o = self.periph_buses[i].adr,
@@ -147,12 +147,10 @@ class NEORV32(CPU):
                 self.add_debug(cpu_params)
 
             vhd2v_converter = VHD2VConverter(self.platform,
-                top_entity    = f"neorv32_litex_core_complex",
-                build_dir     = os.path.abspath(os.path.dirname(__file__)),
-                work_package  = "neorv32",
+                name          = "neorv32_litex_core_complex",
+                library       = "neorv32",
                 force_convert = True,
-                add_instance  = True,
-                params = cpu_params
+                ports         = cpu_params,
             )
             self.add_sources(vhd2v_converter)
 

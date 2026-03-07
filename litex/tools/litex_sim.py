@@ -7,6 +7,7 @@
 # Copyright (c) 2020 Antmicro <www.antmicro.com>
 # Copyright (c) 2017 Pierre-Olivier Vauboin <po@lambdaconcept>
 # Copyright (c) 2023 Victor Suarez Rovere <suarezvictor@gmail.com>
+# Copyright (c) 2026 Aoba Fujino <41146f@gmail.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import sys
@@ -28,8 +29,6 @@ from litex.soc.cores.bitbang import *
 from litex.soc.cores.gpio    import GPIOTristate
 from litex.soc.cores.cpu     import CPUS
 from litex.soc.cores.video   import VideoGenericPHY
-
-from litedram.phy.model import get_sdram_phy_settings
 
 from liteeth.common             import *
 from liteeth.phy.gmii           import LiteEthPHYGMII

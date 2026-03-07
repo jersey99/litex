@@ -5,14 +5,89 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import os
-import re
 
 import amaranth
-from amaranth.hdl import _ast, _ir
 from amaranth.back import verilog
 
 import migen
 from litex.gen.fhdl.module import LiteXModule
+from litex.build.converter_common import (
+    apply_aliases_with_conflict_checks,
+    format_unresolved_port_error,
+    parse_port_keyword,
+    resolve_output_paths,
+    write_text_if_different,
+)
+
+# Amaranth Compatibility ---------------------------------------------------------------------------
+
+try:
+    from amaranth.hdl import _ast as _am_ast
+except ImportError:
+    _am_ast = None
+
+try:
+    from amaranth.hdl import _ir as _am_ir
+except ImportError:
+    _am_ir = None
+
+
+class _CompatSignalDict:
+    """Identity-keyed dictionary fallback when Amaranth SignalDict is unavailable."""
+    def __init__(self):
+        self._data = {}
+
+    def __setitem__(self, key, value):
+        self._data[id(key)] = (key, value)
+
+    def __getitem__(self, key):
+        return self._data[id(key)][1]
+
+    def get(self, key, default=None):
+        item = self._data.get(id(key), None)
+        return default if item is None else item[1]
+
+    def __contains__(self, key):
+        return id(key) in self._data
+
+
+def _new_signal_dict(items=None):
+    signal_dict_cls = getattr(_am_ast, "SignalDict", None) if _am_ast is not None else None
+    if signal_dict_cls is not None:
+        return signal_dict_cls(items or [])
+
+    d = _CompatSignalDict()
+    for k, v in (items or []):
+        d[k] = v
+    return d
+
+
+def _prepare_fragment(module, ports, hierarchy):
+    fragment_cls = getattr(_am_ir, "Fragment", None) if _am_ir is not None else None
+    if fragment_cls is None or not hasattr(fragment_cls, "get"):
+        raise RuntimeError("Amaranth Fragment API is unavailable in this version.")
+
+    return fragment_cls.get(module, None).prepare(
+        ports     = ports,
+        hierarchy = hierarchy,
+    )
+
+
+def _build_netlist(fragment, name):
+    builder = getattr(_am_ir, "build_netlist", None) if _am_ir is not None else None
+    if builder is None:
+        raise RuntimeError("Amaranth netlist builder API is unavailable in this version.")
+    return builder(fragment, name=name)
+
+
+def _convert_fragment(fragment, name):
+    converter = getattr(verilog, "convert_fragment", None)
+    if converter is None:
+        raise RuntimeError("Amaranth Verilog convert_fragment API is unavailable in this version.")
+    return converter(fragment, name=name)
+
+
+_SIGNAL_TYPE = getattr(_am_ast, "Signal", None) if _am_ast is not None else None
 
 # Amaranth2VConverter ------------------------------------------------------------------------------
 
@@ -41,6 +116,8 @@ class Amaranth2VConverter(LiteXModule):
     def __init__(self, platform,
         name          = "amaranth2v_converter",
         module        = None,
+        ports         = None,
+        domains       = None,
         core_params   = None,
         clock_domains = None,
         output_dir    = None,
@@ -59,7 +136,7 @@ class Amaranth2VConverter(LiteXModule):
             Optional Amaranth module to be added as a submodule of the
             internal wrapper module.
 
-        core_params : dict[str, migen.Signal]
+        ports : dict[str, migen.Signal]
             Mapping between string-encoded port names and LiteX/Migen signals.
 
             Format: <dir>_<path>
@@ -74,9 +151,15 @@ class Amaranth2VConverter(LiteXModule):
               with a pullup sub Record containing only a sub sub Record o
             - Clock And Reset signals must be <dir>_cdname_[clk|rst]
 
-        clock_domains : list[str] or None
+        domains : list[str] or None
             List of clock domain names to create in the Amaranth wrapper.
             The 'sync' domain is always added if missing.
+
+        core_params : dict[str, migen.Signal] or None
+            Deprecated alias for `ports`.
+
+        clock_domains : list[str] or None
+            Deprecated alias for `domains`.
 
         output_dir : str or None
             Optional override for the Verilog output directory.
@@ -85,17 +168,34 @@ class Amaranth2VConverter(LiteXModule):
         self.name        = name
         self.output_dir  = output_dir
 
+        normalized = apply_aliases_with_conflict_checks(
+            {
+                "ports"        : ports,
+                "core_params": core_params,
+                "domains"      : domains,
+                "clock_domains": clock_domains,
+            },
+            alias_map={
+                "ports"  : ("ports", "core_params"),
+                "domains": ("domains", "clock_domains"),
+            },
+        )
+
         # Internal Amaranth wrapper module
         self.m           = amaranth.Module()
 
         # List of LiteX <-> Amaranth signal connections (direction, amaranth_signal, migen_signal)
         self.conn_list   = []
 
-        # Core parameters
-        self.core_params = {True: core_params, False: dict()}[core_params is not None]
+        # Port aliases.
+        ports = normalized["ports"]
+        self.ports = ports or dict()
+        # Backward-compatible public attribute.
+        self.core_params = self.ports
 
-        # Clock domains
-        clock_domains    = {True: clock_domains, False: list()}[clock_domains is not None]
+        # Domain aliases.
+        domains = normalized["domains"]
+        domains = domains or list()
 
         # Add provided Amaranth module as submodules
         if module is not None:
@@ -103,10 +203,10 @@ class Amaranth2VConverter(LiteXModule):
             self._module = module
 
         # Ensure sync domain exists
-        if "sync" not in clock_domains:
-            clock_domains.append("sync")
+        if "sync" not in domains:
+            domains.append("sync")
 
-        for cd in clock_domains:
+        for cd in domains:
             self.add_clock_domain(cd)
 
     def add_clock_domain(self, name):
@@ -164,17 +264,27 @@ class Amaranth2VConverter(LiteXModule):
         """
         ports = [n for _, n, _ in self.conn_list]
 
-        fragment = _ir.Fragment.get(self.m, None).prepare(
-            ports     = ports,
-            hierarchy = (self.name,)
-        )
+        fragment = _prepare_fragment(self.m, ports=ports, hierarchy=(self.name,))
 
-        v, _name_map = verilog.convert_fragment(fragment, name=self.name)
-        netlist      = _ir.build_netlist(fragment, name=self.name)
+        v, _name_map = _convert_fragment(fragment, name=self.name)
+        netlist      = _build_netlist(fragment, name=self.name)
+
+        ports_i  = set(getattr(netlist.top, "ports_i", ()))
+        ports_o  = set(getattr(netlist.top, "ports_o", ()))
+        ports_io = set(getattr(netlist.top, "ports_io", ()))
+
+        def get_direction(name):
+            if name in ports_o:
+                return "o"
+            if name in ports_i:
+                return "i"
+            if name in ports_io:
+                return "io"
+            raise ValueError(f"Unable to infer direction for generated port '{name}'")
 
         # Map Amaranth signals to Verilog port names and directions
-        self.amaranth_name_map = _ast.SignalDict(
-            (sig, (name, "o" if name in netlist.top.ports_o else "i"))
+        self.amaranth_name_map = _new_signal_dict(
+            (sig, (name, get_direction(name)))
             for name, sig, _ in fragment.ports
         )
 
@@ -212,7 +322,7 @@ class Amaranth2VConverter(LiteXModule):
         if obj is None:
             return None
         # it's a Signal -> it's the solution
-        if type(obj) is amaranth.Signal:
+        if _SIGNAL_TYPE is not None and isinstance(obj, _SIGNAL_TYPE):
             return obj
 
         sig = None
@@ -249,21 +359,14 @@ class Amaranth2VConverter(LiteXModule):
         ValueError
             If a signal cannot be resolved.
         """
-        for kw, v in self.core_params.items():
-            # Direction prefix.
-            # Extract direction and signals hierarchy.
-            parts = re.findall(r'(?:^|_)(_[a-z]+|[a-z]+)', kw)
-            if len(parts) == 0:
-                raise ValueError(f"Cannot parse port name {kw}")
+        resolved = _new_signal_dict()
 
-            d     = parts[0]
-            parts = parts[1:]
-
-            if d not in ("i", "o", "io"):
-                raise ValueError(f"Invalid port '{kw}': must start with i_, o_ or io_")
+        for kw, v in self.ports.items():
+            d, parts = self._parse_port_keyword(kw)
 
             # Wrapper-level resolution.
-            am_sig = getattr(self.m, parts[0], None)
+            wrapper_head = parts[0]
+            am_sig       = getattr(self.m, wrapper_head, None)
 
             # Recursive submodule resolution
             if am_sig is None and hasattr(self, "_module"):
@@ -279,7 +382,21 @@ class Amaranth2VConverter(LiteXModule):
                     am_sig = getattr(cd, candr, None)
 
             if am_sig is None:
-                raise ValueError(f"Cannot resolve '{kw}' on Amaranth module.")
+                raise ValueError(format_unresolved_port_error(
+                    kw            = kw,
+                    d             = d,
+                    parts         = parts,
+                    wrapper_head  = wrapper_head,
+                    has_submodule = hasattr(self, "_module"),
+                    domains       = self.m._domains.keys(),
+                    target        = "Amaranth module",
+                ))
+
+            previous_kw = resolved.get(am_sig, None)
+            if previous_kw is not None:
+                raise ValueError(
+                    f"Ambiguous ports: both '{previous_kw}' and '{kw}' resolve to the same Amaranth signal.")
+            resolved[am_sig] = kw
 
             self.conn_list.append((d, am_sig, v))
 
@@ -293,22 +410,23 @@ class Amaranth2VConverter(LiteXModule):
         - Registers the Verilog file as a platform source
         - Instantiates the generated module
         """
-        output_dir = {True:  self.platform.output_dir, False: self.output_dir}[self.output_dir is None]
-
-        src_dir = os.path.join(output_dir, self.name)
-        v_file  = os.path.join(src_dir, f"{self.name}.v")
-
-        os.makedirs(src_dir, exist_ok=True)
+        src_dir, v_file = resolve_output_paths(
+            platform   = self.platform,
+            output_dir = self.output_dir,
+            name       = self.name)
 
         # Resolve connections
         self.connect_wrapper()
 
         # Generate and write Verilog
-        with open(v_file, "w") as f:
-            f.write(self.generate_verilog())
+        write_text_if_different(v_file, self.generate_verilog())
 
         # Register generated source
         self.platform.add_source(v_file)
 
         # Add an Instance to map verilog in the LiteX gateware
         self.specials += self.get_instance()
+
+    @staticmethod
+    def _parse_port_keyword(kw):
+        return parse_port_keyword(kw)

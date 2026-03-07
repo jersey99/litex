@@ -2,7 +2,7 @@
 # CTU CAN-FD Core Wrapper for LiteX.
 #
 # Copyright (c) 2021      Andrew Dennison <andrew@motec.com.au>
-# Copyright (c) 2021-2024 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2021-2026 Florent Kermarrec <florent@enjoy-digital.fr>
 # Copyright (c) 2024      Gwenhael Goavec-Merou <gwenhael@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
@@ -163,12 +163,11 @@ class CTUCANFD(LiteXModule, EventManager):
     def do_finalize(self):
         # CAN Core instance
         self.vhd2v_converter = VHD2VConverter(self.platform,
-            top_entity    = "can_top_level",
-            build_dir     = os.path.abspath(os.path.dirname(__file__)),
-            work_package  = "ctu_can_fd_rtl",
+            name          = "can_top_level",
+            output_dir    = os.path.abspath(os.path.dirname(__file__)),
+            library       = "ctu_can_fd_rtl",
             force_convert = self._force_convert,
-            params        = self.core_params,
-            add_instance  = True,
+            ports         = self.core_params,
         )
 
         # Add Sources.
