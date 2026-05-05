@@ -425,7 +425,7 @@ void netload_fpga(void) {
       spiflash_core_mmap_write_config_write(1);
 
       printf("erasing fpga image sectors\n");
-      spiflash_erase_range(0, 0x2faf080);  // Delete 50MB for now
+      spiflash_erase_range(0, 0x3473bc0);  // Delete 55MB for now
 
       size = copy_file_from_tftp_to_flash(g_remote_src_ip,
 					  TFTP_SERVER_PORT,

@@ -622,7 +622,7 @@ def get_controls_json(csr_regions={}, constants={}, mem_regions={}, csr_paging=0
                     if name.startswith("controls"):
                         reset_val = csr.storage.reset.value if hasattr(csr, "storage") else csr.status.reset.value
                         F_string = f"{hex(region_origin & (csr_paging - 1))}, {hex(2**csr.size - 1)}, Y, {rename}, {'Bit' if csr.size is 1 else 'Int32'}, Trigger, CORSO, {_type}, {csr.description[:40]}, {csr.description}, , , , {reset_val}, 0, , , , , ,"
-                        print(hex(region_origin & 0xfff), csr.name)
+                        print(hex(region_origin & 0x1fff), csr.name)
                         if hasattr(csr, "fields"):
                             for fld in csr.fields.fields:
                                 F_string = f"{hex(region_origin & (csr_paging - 1))}, {hex((2**fld.size-1) << fld.offset)}, Y, {rename+fld.name.title()}, {'Bit' if fld.size is 1 else 'Int32'}, Trigger, CORSO, {_type}, {fld.description[:40]}, {fld.description}, , , , {fld.reset_value}, 0, , , , , ,"
